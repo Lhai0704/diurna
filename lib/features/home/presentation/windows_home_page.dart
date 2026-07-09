@@ -66,7 +66,7 @@ class _ScheduleMonthPanel extends ConsumerWidget {
   }
 }
 
-class _ScrollableMonthCalendar extends StatelessWidget {
+class _ScrollableMonthCalendar extends StatefulWidget {
   const _ScrollableMonthCalendar({
     required this.events,
     required this.onRefresh,
@@ -76,29 +76,69 @@ class _ScrollableMonthCalendar extends StatelessWidget {
   final Future<List<CalendarEvent>> Function() onRefresh;
 
   @override
+  State<_ScrollableMonthCalendar> createState() =>
+      _ScrollableMonthCalendarState();
+}
+
+class _ScrollableMonthCalendarState extends State<_ScrollableMonthCalendar> {
+  final GlobalKey _todayKey = GlobalKey();
+  bool _didCenterToday = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _centerToday());
+  }
+
+  void _centerToday() {
+    if (_didCenterToday || !mounted) {
+      return;
+    }
+
+    final todayContext = _todayKey.currentContext;
+    if (todayContext == null) {
+      // Layout may not be ready yet; retry on the next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centerToday());
+      return;
+    }
+
+    _didCenterToday = true;
+    Scrollable.ensureVisible(
+      todayContext,
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final today = _dateOnly(DateTime.now());
     final firstMonth = DateTime(today.year, today.month - 3);
     final eventsByDate = <String, List<CalendarEvent>>{};
 
-    for (final event in events) {
+    for (final event in widget.events) {
       final key = _dateKey(event.startsAt);
       eventsByDate.putIfAbsent(key, () => []).add(event);
     }
 
+    // Build all months eagerly so today's cell has a layout context for
+    // centering on first open (only 18 months, so this is cheap).
     return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView.builder(
+      onRefresh: widget.onRefresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        itemCount: 18,
-        itemBuilder: (context, index) {
-          final month = DateTime(firstMonth.year, firstMonth.month + index);
-          return _MonthSection(
-            month: month,
-            today: today,
-            eventsByDate: eventsByDate,
-          );
-        },
+        child: Column(
+          children: [
+            for (var index = 0; index < 18; index++)
+              _MonthSection(
+                month: DateTime(firstMonth.year, firstMonth.month + index),
+                today: today,
+                todayKey: _todayKey,
+                eventsByDate: eventsByDate,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -108,11 +148,13 @@ class _MonthSection extends StatelessWidget {
   const _MonthSection({
     required this.month,
     required this.today,
+    required this.todayKey,
     required this.eventsByDate,
   });
 
   final DateTime month;
   final DateTime today;
+  final GlobalKey todayKey;
   final Map<String, List<CalendarEvent>> eventsByDate;
 
   @override
@@ -162,9 +204,11 @@ class _MonthSection extends StatelessWidget {
                 return const _EmptyDayCell();
               }
               final day = DateTime(month.year, month.month, dayNumber);
+              final isToday = _sameDate(day, today);
               return _DayCell(
+                key: isToday ? todayKey : null,
                 day: day,
-                isToday: _sameDate(day, today),
+                isToday: isToday,
                 events: eventsByDate[_dateKey(day)] ?? const [],
               );
             },
@@ -186,6 +230,7 @@ class _EmptyDayCell extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   const _DayCell({
+    super.key,
     required this.day,
     required this.isToday,
     required this.events,
@@ -218,22 +263,11 @@ class _DayCell extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Text(
-                    '${day.day}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: isToday ? colorScheme.primary : null,
-                      fontWeight: isToday ? FontWeight.w700 : null,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.add_circle_outline,
-                    size: 16,
-                    color: colorScheme.primary,
-                  ),
-                ],
+              Text(
+                '${day.day}',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: isToday ? colorScheme.primary : null,
+                ),
               ),
               const SizedBox(height: 4),
               Expanded(
@@ -255,9 +289,7 @@ class _DayCell extends StatelessWidget {
               if (events.length > 3)
                 Text(
                   '+${events.length - 3}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.labelSmall,
                 ),
             ],
           ),
@@ -426,9 +458,9 @@ class _TaskPanel extends ConsumerWidget {
     final tasks = ref.watch(tasksProvider);
 
     return _Panel(
-      title: '综合代办事项',
+      title: '综合待办事项',
       trailing: IconButton(
-        tooltip: '新增代办',
+        tooltip: '新增待办',
         onPressed: () => showTaskEditPage(context),
         icon: const Icon(Icons.add),
       ),
@@ -493,7 +525,10 @@ class _TaskTile extends ConsumerWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: task.isCompleted
-              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              ? Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  decoration: TextDecoration.lineThrough,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                )
               : null,
         ),
         subtitle: Text(

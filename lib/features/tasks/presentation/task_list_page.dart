@@ -91,7 +91,10 @@ class _TaskTile extends ConsumerWidget {
         title: Text(
           task.title,
           style: task.isCompleted
-              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              ? Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  decoration: TextDecoration.lineThrough,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                )
               : null,
         ),
         subtitle: Text(subtitleParts.join(' · ')),
