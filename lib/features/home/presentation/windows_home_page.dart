@@ -1,0 +1,558 @@
+import 'package:diurna/core/utils/app_date_utils.dart';
+import 'package:diurna/features/auth/data/auth_repository.dart';
+import 'package:diurna/features/calendar/data/calendar_event_model.dart';
+import 'package:diurna/features/calendar/presentation/event_edit_page.dart';
+import 'package:diurna/features/calendar/providers/calendar_providers.dart';
+import 'package:diurna/features/diary/data/diary_model.dart';
+import 'package:diurna/features/diary/providers/diary_providers.dart';
+import 'package:diurna/features/tasks/data/task_model.dart';
+import 'package:diurna/features/tasks/presentation/task_edit_page.dart';
+import 'package:diurna/features/tasks/providers/task_providers.dart';
+import 'package:diurna/shared/widgets/empty_view.dart';
+import 'package:diurna/shared/widgets/loading_view.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class WindowsHomePage extends ConsumerWidget {
+  const WindowsHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      body: SafeArea(
+        child: Row(
+          children: const [
+            Expanded(child: _ScheduleMonthPanel()),
+            VerticalDivider(width: 1),
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(child: _DiaryPanel()),
+                  Divider(height: 1),
+                  Expanded(child: _TaskPanel()),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleMonthPanel extends ConsumerWidget {
+  const _ScheduleMonthPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final events = ref.watch(calendarEventsProvider);
+
+    return _Panel(
+      title: '日程安排',
+      trailing: IconButton(
+        tooltip: '新增日程',
+        onPressed: () => showEventEditPage(context),
+        icon: const Icon(Icons.add),
+      ),
+      child: events.when(
+        data: (items) => _ScrollableMonthCalendar(
+          events: items,
+          onRefresh: () => ref.refresh(calendarEventsProvider.future),
+        ),
+        error: (error, stackTrace) => EmptyView(message: error.toString()),
+        loading: () => const LoadingView(),
+      ),
+    );
+  }
+}
+
+class _ScrollableMonthCalendar extends StatelessWidget {
+  const _ScrollableMonthCalendar({
+    required this.events,
+    required this.onRefresh,
+  });
+
+  final List<CalendarEvent> events;
+  final Future<List<CalendarEvent>> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _dateOnly(DateTime.now());
+    final firstMonth = DateTime(today.year, today.month - 3);
+    final eventsByDate = <String, List<CalendarEvent>>{};
+
+    for (final event in events) {
+      final key = _dateKey(event.startsAt);
+      eventsByDate.putIfAbsent(key, () => []).add(event);
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        itemCount: 18,
+        itemBuilder: (context, index) {
+          final month = DateTime(firstMonth.year, firstMonth.month + index);
+          return _MonthSection(
+            month: month,
+            today: today,
+            eventsByDate: eventsByDate,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MonthSection extends StatelessWidget {
+  const _MonthSection({
+    required this.month,
+    required this.today,
+    required this.eventsByDate,
+  });
+
+  final DateTime month;
+  final DateTime today;
+  final Map<String, List<CalendarEvent>> eventsByDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstDay = DateTime(month.year, month.month);
+    final leadingEmptyDays = firstDay.weekday - DateTime.monday;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final itemCount = ((leadingEmptyDays + daysInMonth + 6) ~/ 7) * 7;
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '${month.year}年${month.month}月',
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          Row(
+            children: weekdays
+                .map(
+                  (weekday) => Expanded(
+                    child: Center(
+                      child: Text(weekday, style: theme.textTheme.labelMedium),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 6),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: itemCount,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              childAspectRatio: 0.95,
+            ),
+            itemBuilder: (context, index) {
+              final dayNumber = index - leadingEmptyDays + 1;
+              if (dayNumber < 1 || dayNumber > daysInMonth) {
+                return const _EmptyDayCell();
+              }
+              final day = DateTime(month.year, month.month, dayNumber);
+              return _DayCell(
+                day: day,
+                isToday: _sameDate(day, today),
+                events: eventsByDate[_dateKey(day)] ?? const [],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyDayCell extends StatelessWidget {
+  const _EmptyDayCell();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.expand();
+  }
+}
+
+class _DayCell extends StatelessWidget {
+  const _DayCell({
+    required this.day,
+    required this.isToday,
+    required this.events,
+  });
+
+  final DateTime day;
+  final bool isToday;
+  final List<CalendarEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final borderColor = isToday
+        ? colorScheme.primary
+        : colorScheme.outlineVariant;
+
+    return Card(
+      margin: const EdgeInsets.all(3),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(6),
+        side: BorderSide(color: borderColor, width: isToday ? 1.5 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => showEventEditPage(context, initialDate: day),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '${day.day}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: isToday ? colorScheme.primary : null,
+                      fontWeight: isToday ? FontWeight.w700 : null,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.add_circle_outline,
+                    size: 16,
+                    color: colorScheme.primary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: events.length > 3 ? 3 : events.length,
+                  itemBuilder: (context, index) {
+                    final event = events[index];
+                    return Text(
+                      event.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    );
+                  },
+                ),
+              ),
+              if (events.length > 3)
+                Text(
+                  '+${events.length - 3}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiaryPanel extends ConsumerStatefulWidget {
+  const _DiaryPanel();
+
+  @override
+  ConsumerState<_DiaryPanel> createState() => _DiaryPanelState();
+}
+
+class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
+  late DateTime _selectedDate;
+  late final TextEditingController _contentController;
+  bool _dirty = false;
+  bool _syncingText = false;
+  String? _loadedKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = _dateOnly(DateTime.now());
+    _contentController = TextEditingController();
+    _contentController.addListener(() {
+      if (!_syncingText) {
+        _dirty = true;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDate: _selectedDate,
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _selectedDate = _dateOnly(picked);
+      _dirty = false;
+      _loadedKey = null;
+    });
+  }
+
+  Future<void> _save(DiaryEntry? entry) async {
+    final selectedDateLabel = AppDateUtils.formatDate(_selectedDate);
+    await ref
+        .read(diaryRepositoryProvider)
+        .save(
+          id: entry?.id,
+          entryDate: _selectedDate,
+          title: entry?.title.isNotEmpty == true
+              ? entry!.title
+              : selectedDateLabel,
+          content: _contentController.text,
+          mood: entry?.mood,
+          tags: entry?.tags ?? const [],
+        );
+    _dirty = false;
+    ref.invalidate(diaryEntriesProvider);
+  }
+
+  void _syncText(DiaryEntry? entry) {
+    final key = [
+      _dateKey(_selectedDate),
+      entry?.id ?? 'new',
+      entry?.updatedAt.toIso8601String() ?? '',
+    ].join('|');
+
+    if (_loadedKey == key || _dirty) {
+      return;
+    }
+
+    _syncingText = true;
+    _contentController.text = entry?.content ?? '';
+    _contentController.selection = TextSelection.collapsed(
+      offset: _contentController.text.length,
+    );
+    _syncingText = false;
+    _loadedKey = key;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = ref.watch(diaryEntriesProvider);
+
+    return _Panel(
+      title: '日记',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton.icon(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_today_outlined),
+            label: Text(AppDateUtils.formatDate(_selectedDate)),
+          ),
+          IconButton(
+            tooltip: '退出登录',
+            onPressed: () => ref.read(authRepositoryProvider).signOut(),
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      child: entries.when(
+        data: (items) {
+          final entry = _entryForDate(items, _selectedDate);
+          _syncText(entry);
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _contentController,
+                    expands: true,
+                    maxLines: null,
+                    minLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      labelText: '正文',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: () => _save(entry),
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('保存日记'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        error: (error, stackTrace) => EmptyView(message: error.toString()),
+        loading: () => const LoadingView(),
+      ),
+    );
+  }
+}
+
+class _TaskPanel extends ConsumerWidget {
+  const _TaskPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasks = ref.watch(tasksProvider);
+
+    return _Panel(
+      title: '综合代办事项',
+      trailing: IconButton(
+        tooltip: '新增代办',
+        onPressed: () => showTaskEditPage(context),
+        icon: const Icon(Icons.add),
+      ),
+      child: tasks.when(
+        data: (items) => items.isEmpty
+            ? const EmptyView(message: '还没有待办事项。')
+            : RefreshIndicator(
+                onRefresh: () => ref.refresh(tasksProvider.future),
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) =>
+                      _TaskTile(task: items[index]),
+                ),
+              ),
+        error: (error, stackTrace) => EmptyView(message: error.toString()),
+        loading: () => const LoadingView(),
+      ),
+    );
+  }
+}
+
+class _TaskTile extends ConsumerWidget {
+  const _TaskTile({required this.task});
+
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subtitleParts = [
+      if (task.dueDate != null) '截止 ${AppDateUtils.formatDate(task.dueDate!)}',
+      '优先级 ${task.priority}',
+      if (task.note?.isNotEmpty ?? false) task.note!,
+    ];
+
+    return Dismissible(
+      key: ValueKey(task.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        color: Theme.of(context).colorScheme.errorContainer,
+        child: const Icon(Icons.delete_outline),
+      ),
+      confirmDismiss: (_) async {
+        await ref.read(taskRepositoryProvider).delete(task.id);
+        ref.invalidate(tasksProvider);
+        return true;
+      },
+      child: ListTile(
+        leading: Checkbox(
+          value: task.isCompleted,
+          onChanged: (value) async {
+            await ref
+                .read(taskRepositoryProvider)
+                .setCompleted(task, value ?? false);
+            ref.invalidate(tasksProvider);
+          },
+        ),
+        title: Text(
+          task.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: task.isCompleted
+              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              : null,
+        ),
+        subtitle: Text(
+          subtitleParts.join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: () => showTaskEditPage(context, task: task),
+      ),
+    );
+  }
+}
+
+class _Panel extends StatelessWidget {
+  const _Panel({required this.title, required this.child, this.trailing});
+
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+  }
+}
+
+DiaryEntry? _entryForDate(List<DiaryEntry> entries, DateTime date) {
+  for (final entry in entries) {
+    if (_sameDate(entry.entryDate, date)) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+DateTime _dateOnly(DateTime value) {
+  final local = value.toLocal();
+  return DateTime(local.year, local.month, local.day);
+}
+
+String _dateKey(DateTime value) => AppDateUtils.formatDate(_dateOnly(value));
+
+bool _sameDate(DateTime a, DateTime b) => _dateKey(a) == _dateKey(b);

@@ -5,7 +5,9 @@ import 'package:diurna/features/auth/presentation/login_page.dart';
 import 'package:diurna/features/auth/presentation/register_page.dart';
 import 'package:diurna/features/calendar/presentation/calendar_page.dart';
 import 'package:diurna/features/diary/presentation/diary_list_page.dart';
+import 'package:diurna/features/home/presentation/windows_home_page.dart';
 import 'package:diurna/features/tasks/presentation/task_list_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,7 +21,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn = authRepository.currentUser != null;
       final authRoute =
-          state.matchedLocation == '/login' || state.matchedLocation == '/register';
+          state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register';
 
       if (!loggedIn && !authRoute) {
         return '/login';
@@ -30,10 +33,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginPage(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterPage(),
@@ -94,9 +94,16 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      return const WindowsHomePage();
+    }
+
     final wide = MediaQuery.sizeOf(context).width >= 720;
     final destinations = const [
-      NavigationDestination(icon: Icon(Icons.check_circle_outline), label: '待办'),
+      NavigationDestination(
+        icon: Icon(Icons.check_circle_outline),
+        label: '待办',
+      ),
       NavigationDestination(icon: Icon(Icons.event_note_outlined), label: '日程'),
       NavigationDestination(icon: Icon(Icons.book_outlined), label: '日记'),
     ];

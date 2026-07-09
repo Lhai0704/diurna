@@ -6,22 +6,28 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   if (!AppEnv.isSupabaseConfigured) {
     throw StateError('请先在项目根目录 .env 中配置 Supabase URL 和 anon key。');
   }
-  return Supabase.instance.client;
+  try {
+    return Supabase.instance.client;
+  } on Object {
+    throw StateError('Supabase is not initialized.');
+  }
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   if (!AppEnv.isSupabaseConfigured) {
     return AuthRepository.notConfigured();
   }
-  return AuthRepository(ref.watch(supabaseClientProvider));
+  try {
+    return AuthRepository(ref.watch(supabaseClientProvider));
+  } on Object {
+    return AuthRepository.notConfigured();
+  }
 });
 
 class AuthRepository {
   AuthRepository(this._client) : _configured = true;
 
-  AuthRepository.notConfigured()
-      : _client = null,
-        _configured = false;
+  AuthRepository.notConfigured() : _client = null, _configured = false;
 
   final SupabaseClient? _client;
   final bool _configured;

@@ -5,18 +5,23 @@ import 'package:diurna/shared/widgets/app_text_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-Future<void> showEventEditPage(BuildContext context, {CalendarEvent? event}) {
+Future<void> showEventEditPage(
+  BuildContext context, {
+  CalendarEvent? event,
+  DateTime? initialDate,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => EventEditPage(event: event),
+    builder: (_) => EventEditPage(event: event, initialDate: initialDate),
   );
 }
 
 class EventEditPage extends ConsumerStatefulWidget {
-  const EventEditPage({this.event, super.key});
+  const EventEditPage({this.event, this.initialDate, super.key});
 
   final CalendarEvent? event;
+  final DateTime? initialDate;
 
   @override
   ConsumerState<EventEditPage> createState() => _EventEditPageState();
@@ -34,7 +39,7 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = widget.initialDate ?? DateTime.now();
     final event = widget.event;
     _titleController = TextEditingController(text: event?.title ?? '');
     _startsAtController = TextEditingController(
@@ -48,7 +53,9 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
     _locationController = TextEditingController(text: event?.location ?? '');
     _noteController = TextEditingController(text: event?.note ?? '');
     _remindAtController = TextEditingController(
-      text: event?.remindAt == null ? '' : AppDateUtils.formatDateTime(event!.remindAt!),
+      text: event?.remindAt == null
+          ? ''
+          : AppDateUtils.formatDateTime(event!.remindAt!),
     );
   }
 
@@ -64,7 +71,8 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
   }
 
   Future<void> _pickDateTime(TextEditingController controller) async {
-    final initial = AppDateUtils.parseNullable(controller.text) ?? DateTime.now();
+    final initial =
+        AppDateUtils.parseNullable(controller.text) ?? DateTime.now();
     final date = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -93,13 +101,15 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
     final startsAt = AppDateUtils.parseNullable(_startsAtController.text)!;
     final endsAt = AppDateUtils.parseNullable(_endsAtController.text)!;
     if (!endsAt.isAfter(startsAt)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('结束时间必须晚于开始时间。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间。')));
       return;
     }
 
-    await ref.read(calendarRepositoryProvider).save(
+    await ref
+        .read(calendarRepositoryProvider)
+        .save(
           id: widget.event?.id,
           title: _titleController.text.trim(),
           startsAt: startsAt,
@@ -162,7 +172,11 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
                 const SizedBox(height: 12),
                 AppTextField(controller: _locationController, label: '地点'),
                 const SizedBox(height: 12),
-                AppTextField(controller: _noteController, label: '备注', maxLines: 3),
+                AppTextField(
+                  controller: _noteController,
+                  label: '备注',
+                  maxLines: 3,
+                ),
                 const SizedBox(height: 12),
                 _DateTimeField(
                   controller: _remindAtController,
@@ -207,7 +221,9 @@ class _DateTimeField extends StatelessWidget {
         if (!required && (value == null || value.trim().isEmpty)) {
           return null;
         }
-        return AppDateUtils.parseNullable(value ?? '') == null ? '请选择$label' : null;
+        return AppDateUtils.parseNullable(value ?? '') == null
+            ? '请选择$label'
+            : null;
       },
       decoration: InputDecoration(
         labelText: label,
