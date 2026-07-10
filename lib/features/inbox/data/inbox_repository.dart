@@ -1,22 +1,29 @@
+import 'package:diurna/core/database/app_database.dart';
 import 'package:diurna/features/inbox/data/inbox_item.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 class InboxRepository {
-  InboxRepository(this._client);
+  InboxRepository(this._database, this._userId);
 
-  final SupabaseClient _client;
+  final AppDatabase _database;
+  final String _userId;
   static const _uuid = Uuid();
 
-  String get _userId => _client.auth.currentUser!.id;
+  Stream<List<InboxItem>> watch() {
+    return _database
+        .watchTasks(_userId)
+        .map(
+          (rows) => rows
+              .map((row) => InboxItem.fromMap(localTaskToRemoteMap(row)))
+              .toList(),
+        );
+  }
 
   Future<List<InboxItem>> list() async {
-    final rows = await _client
-        .from('tasks')
-        .select()
-        .order('sort_order')
-        .order('created_at', ascending: false);
-    return rows.map(InboxItem.fromMap).toList();
+    final rows = await _database.listTasks(_userId);
+    return rows
+        .map((row) => InboxItem.fromMap(localTaskToRemoteMap(row)))
+        .toList();
   }
 
   Future<void> createQuick(String content) async {
@@ -26,8 +33,8 @@ class InboxRepository {
           0,
           (minimum, item) => minimum < item.position ? minimum : item.position,
         );
-    final now = DateTime.now().toUtc();
-    await _client.from('tasks').insert({
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _database.saveTask({
       'id': _uuid.v4(),
       'user_id': _userId,
       'title': content,
@@ -42,8 +49,8 @@ class InboxRepository {
       'due_date': null,
       'priority': null,
       'is_completed': false,
-      'created_at': now.toIso8601String(),
-      'updated_at': now.toIso8601String(),
+      'created_at': now,
+      'updated_at': now,
     });
   }
 
@@ -57,26 +64,30 @@ class InboxRepository {
     bool? isCompleted,
   }) async {
     final action = type == InboxItemType.action && !isTopic;
-    await _update(item.id, {
-      'title': content,
-      'item_type': isTopic
-          ? InboxItemType.research.databaseValue
-          : type?.databaseValue,
-      'is_topic': isTopic,
-      'due_date': action ? dueDate?.toIso8601String() : null,
-      'priority': action ? (priority ?? 2) : null,
-      'is_completed': action ? (isCompleted ?? false) : false,
-      if (isTopic) 'parent_id': null,
-    });
+    final mutations = <TaskMutation>[
+      TaskMutation(item.id, {
+        'title': content,
+        'item_type': isTopic
+            ? InboxItemType.research.databaseValue
+            : type?.databaseValue,
+        'is_topic': isTopic,
+        'due_date': action ? dueDate?.toIso8601String().split('T').first : null,
+        'priority': action ? (priority ?? 2) : null,
+        'is_completed': action ? (isCompleted ?? false) : false,
+        if (isTopic) 'parent_id': null,
+      }),
+    ];
     if (item.isTopic && !isTopic) {
-      await _client
-          .from('tasks')
-          .update({
-            'parent_id': null,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('parent_id', item.id);
+      final items = await list();
+      mutations.addAll(
+        items
+            .where((candidate) => candidate.parentId == item.id)
+            .map(
+              (candidate) => TaskMutation(candidate.id, {'parent_id': null}),
+            ),
+      );
     }
+    await _database.updateTasks(_userId, mutations);
   }
 
   Future<void> setCompleted(InboxItem item, bool completed) {
@@ -104,16 +115,20 @@ class InboxRepository {
   }
 
   Future<void> setArchived(InboxItem item, bool archived) async {
+    final mutations = <TaskMutation>[
+      TaskMutation(item.id, {'is_archived': archived}),
+    ];
     if (item.isTopic && archived) {
-      await _client
-          .from('tasks')
-          .update({
-            'parent_id': null,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('parent_id', item.id);
+      final items = await list();
+      mutations.addAll(
+        items
+            .where((candidate) => candidate.parentId == item.id)
+            .map(
+              (candidate) => TaskMutation(candidate.id, {'parent_id': null}),
+            ),
+      );
     }
-    await _update(item.id, {'is_archived': archived});
+    await _database.updateTasks(_userId, mutations);
   }
 
   Future<void> togglePinned(InboxItem item, List<InboxItem> allItems) async {
@@ -131,8 +146,8 @@ class InboxRepository {
     return _update(item.id, {'parent_id': topicId});
   }
 
-  Future<void> delete(String id) async {
-    await _client.from('tasks').delete().eq('id', id);
+  Future<void> delete(String id) {
+    return _database.deleteTask(_userId, id);
   }
 
   Future<void> moveToEdge(
@@ -182,20 +197,25 @@ class InboxRepository {
         : target.indexWhere((candidate) => candidate.id == targetId);
     target.insert(index < 0 ? target.length : index, item);
 
-    await _writeOrder(target, destination);
+    final mutations = _orderMutations(target, destination);
     if (sourceColumn != destination) {
-      await _writeOrder(source, sourceColumn);
+      mutations.addAll(_orderMutations(source, sourceColumn));
     }
+    await _database.updateTasks(_userId, mutations);
   }
 
-  Future<void> _writeOrder(List<InboxItem> items, InboxColumn column) async {
-    for (var index = 0; index < items.length; index++) {
-      await _update(items[index].id, {
-        'inbox_column': column.databaseValue,
-        'sort_order': index.toDouble(),
-        'parent_id': null,
-      });
-    }
+  List<TaskMutation> _orderMutations(
+    List<InboxItem> items,
+    InboxColumn column,
+  ) {
+    return [
+      for (var index = 0; index < items.length; index++)
+        TaskMutation(items[index].id, {
+          'inbox_column': column.databaseValue,
+          'sort_order': index.toDouble(),
+          'parent_id': null,
+        }),
+    ];
   }
 
   List<InboxItem> _itemsInColumn(List<InboxItem> items, InboxColumn column) {
@@ -211,13 +231,7 @@ class InboxRepository {
     return result;
   }
 
-  Future<void> _update(String id, Map<String, dynamic> values) async {
-    await _client
-        .from('tasks')
-        .update({
-          ...values,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', id);
+  Future<void> _update(String id, Map<String, dynamic> values) {
+    return _database.updateTasks(_userId, [TaskMutation(id, values)]);
   }
 }

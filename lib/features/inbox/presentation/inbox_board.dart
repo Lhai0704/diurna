@@ -1,4 +1,5 @@
 import 'package:diurna/core/utils/app_date_utils.dart';
+import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/inbox/data/inbox_item.dart';
 import 'package:diurna/features/inbox/presentation/inbox_edit_sheet.dart';
 import 'package:diurna/features/inbox/providers/inbox_providers.dart';
@@ -50,8 +51,7 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
   String _query = '';
 
   Future<void> _refresh() async {
-    ref.invalidate(inboxItemsProvider);
-    await ref.read(inboxItemsProvider.future);
+    await triggerSync(ref);
   }
 
   @override
@@ -252,7 +252,6 @@ class _InboxColumnView extends ConsumerWidget {
     await ref
         .read(inboxRepositoryProvider)
         .moveBefore(item, column, null, allItems);
-    ref.invalidate(inboxItemsProvider);
   }
 
   @override
@@ -331,7 +330,6 @@ class _DropBeforeTarget extends ConsumerWidget {
     await ref
         .read(inboxRepositoryProvider)
         .moveBefore(dragged, item.column, item.id, allItems);
-    ref.invalidate(inboxItemsProvider);
   }
 
   @override
@@ -416,7 +414,6 @@ class _InboxCard extends ConsumerWidget {
   ) async {
     try {
       await action();
-      ref.invalidate(inboxItemsProvider);
     } catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -826,7 +823,6 @@ class _TopicDialog extends ConsumerWidget {
                         await ref
                             .read(inboxRepositoryProvider)
                             .assignToTopic(child, null);
-                        ref.invalidate(inboxItemsProvider);
                         if (context.mounted) {
                           Navigator.of(context).pop();
                         }

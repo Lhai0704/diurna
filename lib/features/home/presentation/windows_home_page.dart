@@ -1,4 +1,5 @@
 import 'package:diurna/core/utils/app_date_utils.dart';
+import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
 import 'package:diurna/features/calendar/data/calendar_event_model.dart';
 import 'package:diurna/features/calendar/presentation/event_edit_page.dart';
@@ -9,6 +10,7 @@ import 'package:diurna/features/inbox/presentation/inbox_board.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
 import 'package:diurna/shared/widgets/loading_view.dart';
+import 'package:diurna/shared/widgets/sync_status_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -56,7 +58,7 @@ class _ScheduleMonthPanel extends ConsumerWidget {
       child: events.when(
         data: (items) => _ScrollableMonthCalendar(
           events: items,
-          onRefresh: () => ref.refresh(calendarEventsProvider.future),
+          onRefresh: () => triggerSync(ref),
         ),
         error: (error, stackTrace) => EmptyView(message: error.toString()),
         loading: () => const LoadingView(),
@@ -72,7 +74,7 @@ class _ScrollableMonthCalendar extends StatefulWidget {
   });
 
   final List<CalendarEvent> events;
-  final Future<List<CalendarEvent>> Function() onRefresh;
+  final Future<void> Function() onRefresh;
 
   @override
   State<_ScrollableMonthCalendar> createState() =>
@@ -362,7 +364,6 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
           tags: entry?.tags ?? const [],
         );
     _dirty = false;
-    ref.invalidate(diaryEntriesProvider);
   }
 
   void _syncText(DiaryEntry? entry) {
@@ -394,6 +395,7 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const SyncStatusIcon(),
           TextButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_outlined),

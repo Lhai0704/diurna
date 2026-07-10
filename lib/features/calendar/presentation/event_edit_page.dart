@@ -122,8 +122,6 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
               : _noteController.text.trim(),
           remindAt: AppDateUtils.parseNullable(_remindAtController.text),
         );
-    ref.invalidate(calendarEventsProvider);
-
     if (mounted) {
       Navigator.of(context).pop();
     }

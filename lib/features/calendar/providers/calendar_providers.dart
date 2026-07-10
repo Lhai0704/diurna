@@ -1,4 +1,5 @@
 import 'package:diurna/features/auth/data/auth_repository.dart';
+import 'package:diurna/core/database/database_providers.dart';
 import 'package:diurna/features/calendar/data/calendar_event_model.dart';
 import 'package:diurna/features/calendar/data/calendar_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,11 +16,16 @@ class TodayOnlyNotifier extends Notifier<bool> {
 }
 
 final calendarRepositoryProvider = Provider<CalendarRepository>((ref) {
-  return CalendarRepository(ref.watch(supabaseClientProvider));
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) {
+    throw StateError('请先登录。');
+  }
+  return CalendarRepository(ref.watch(appDatabaseProvider), userId);
 });
 
-final calendarEventsProvider =
-    FutureProvider.autoDispose<List<CalendarEvent>>((ref) {
+final calendarEventsProvider = StreamProvider.autoDispose<List<CalendarEvent>>((
+  ref,
+) {
   final todayOnly = ref.watch(todayOnlyProvider);
-  return ref.watch(calendarRepositoryProvider).list(todayOnly: todayOnly);
+  return ref.watch(calendarRepositoryProvider).watch(todayOnly: todayOnly);
 });

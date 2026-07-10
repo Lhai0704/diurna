@@ -24,6 +24,15 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   }
 });
 
+final authStateProvider = StreamProvider<AuthState>((ref) {
+  return ref.watch(authRepositoryProvider).authStateChanges;
+});
+
+final currentUserIdProvider = Provider<String?>((ref) {
+  ref.watch(authStateProvider);
+  return ref.watch(authRepositoryProvider).currentUser?.id;
+});
+
 class AuthRepository {
   AuthRepository(this._client) : _configured = true;
 

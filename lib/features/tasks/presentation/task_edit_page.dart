@@ -76,8 +76,6 @@ class _TaskEditPageState extends ConsumerState<TaskEditPage> {
           priority: _priority,
           isCompleted: widget.task?.isCompleted ?? false,
         );
-    ref.invalidate(tasksProvider);
-
     if (mounted) {
       Navigator.of(context).pop();
     }

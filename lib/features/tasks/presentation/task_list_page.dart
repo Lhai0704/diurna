@@ -1,5 +1,6 @@
 import 'package:diurna/core/utils/app_date_utils.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
+import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/tasks/data/task_model.dart';
 import 'package:diurna/features/tasks/presentation/task_edit_page.dart';
 import 'package:diurna/features/tasks/providers/task_providers.dart';
@@ -30,7 +31,7 @@ class TaskListPage extends ConsumerWidget {
         data: (items) => items.isEmpty
             ? const EmptyView(message: '还没有待办事项。')
             : RefreshIndicator(
-                onRefresh: () => ref.refresh(tasksProvider.future),
+                onRefresh: () => triggerSync(ref),
                 child: ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) {
@@ -75,7 +76,6 @@ class _TaskTile extends ConsumerWidget {
       ),
       confirmDismiss: (_) async {
         await ref.read(taskRepositoryProvider).delete(task.id);
-        ref.invalidate(tasksProvider);
         return true;
       },
       child: ListTile(
@@ -85,7 +85,6 @@ class _TaskTile extends ConsumerWidget {
             await ref
                 .read(taskRepositoryProvider)
                 .setCompleted(task, value ?? false);
-            ref.invalidate(tasksProvider);
           },
         ),
         title: Text(

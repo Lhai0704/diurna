@@ -1,9 +1,11 @@
 import 'package:diurna/core/utils/app_date_utils.dart';
+import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/diary/data/diary_model.dart';
 import 'package:diurna/features/diary/presentation/diary_edit_page.dart';
 import 'package:diurna/features/diary/providers/diary_providers.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
 import 'package:diurna/shared/widgets/loading_view.dart';
+import 'package:diurna/shared/widgets/sync_status_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,12 +17,15 @@ class DiaryListPage extends ConsumerWidget {
     final entries = ref.watch(diaryEntriesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('日记')),
+      appBar: AppBar(
+        title: const Text('日记'),
+        actions: const [SyncStatusIcon()],
+      ),
       body: entries.when(
         data: (items) => items.isEmpty
             ? const EmptyView(message: '还没有日记。')
             : RefreshIndicator(
-                onRefresh: () => ref.refresh(diaryEntriesProvider.future),
+                onRefresh: () => triggerSync(ref),
                 child: ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) {
@@ -58,7 +63,6 @@ class _DiaryTile extends ConsumerWidget {
       ),
       confirmDismiss: (_) async {
         await ref.read(diaryRepositoryProvider).delete(entry.id);
-        ref.invalidate(diaryEntriesProvider);
         return true;
       },
       child: ListTile(

@@ -86,8 +86,6 @@ class _DiaryEditPageState extends ConsumerState<DiaryEditPage> {
               : _moodController.text.trim(),
           tags: tags,
         );
-    ref.invalidate(diaryEntriesProvider);
-
     if (mounted) {
       Navigator.of(context).pop();
     }

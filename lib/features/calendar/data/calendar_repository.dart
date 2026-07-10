@@ -1,29 +1,25 @@
+import 'package:diurna/core/database/app_database.dart';
 import 'package:diurna/features/calendar/data/calendar_event_model.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 class CalendarRepository {
-  CalendarRepository(this._client);
+  CalendarRepository(this._database, this._userId);
 
-  final SupabaseClient _client;
+  final AppDatabase _database;
+  final String _userId;
   static const _uuid = Uuid();
 
-  String get _userId => _client.auth.currentUser!.id;
-
-  Future<List<CalendarEvent>> list({bool todayOnly = false}) async {
-    var query = _client.from('calendar_events').select();
-
-    if (todayOnly) {
-      final now = DateTime.now();
-      final start = DateTime(now.year, now.month, now.day);
-      final end = start.add(const Duration(days: 1));
-      query = query
-          .gte('starts_at', start.toUtc().toIso8601String())
-          .lt('starts_at', end.toUtc().toIso8601String());
-    }
-
-    final rows = await query.order('starts_at');
-    return rows.map((row) => CalendarEvent.fromMap(row)).toList();
+  Stream<List<CalendarEvent>> watch({bool todayOnly = false}) {
+    return _database
+        .watchCalendarEvents(_userId, todayOnly: todayOnly)
+        .map(
+          (rows) => rows
+              .map(
+                (row) =>
+                    CalendarEvent.fromMap(localCalendarEventToRemoteMap(row)),
+              )
+              .toList(),
+        );
   }
 
   Future<void> save({
@@ -34,9 +30,9 @@ class CalendarRepository {
     String? location,
     String? note,
     DateTime? remindAt,
-  }) async {
+  }) {
     final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('calendar_events').upsert({
+    return _database.saveCalendarEvent({
       'id': id ?? _uuid.v4(),
       'user_id': _userId,
       'title': title,
@@ -50,7 +46,7 @@ class CalendarRepository {
     });
   }
 
-  Future<void> delete(String id) async {
-    await _client.from('calendar_events').delete().eq('id', id);
+  Future<void> delete(String id) {
+    return _database.deleteCalendarEvent(_userId, id);
   }
 }

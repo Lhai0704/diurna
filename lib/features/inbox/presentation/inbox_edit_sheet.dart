@@ -61,7 +61,6 @@ class _QuickCaptureDialogState extends ConsumerState<_QuickCaptureDialog> {
     }
     setState(() => _saving = true);
     await ref.read(inboxRepositoryProvider).createQuick(content);
-    ref.invalidate(inboxItemsProvider);
     _controller.clear();
     if (mounted) {
       Navigator.of(context).pop();
@@ -182,7 +181,6 @@ class _InboxEditSheetState extends ConsumerState<InboxEditSheet> {
           priority: _priority,
           isCompleted: _completed,
         );
-    ref.invalidate(inboxItemsProvider);
     if (mounted) {
       Navigator.of(context).pop();
     }

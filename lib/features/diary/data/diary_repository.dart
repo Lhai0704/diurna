@@ -1,23 +1,22 @@
+import 'package:diurna/core/database/app_database.dart';
 import 'package:diurna/features/diary/data/diary_model.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 class DiaryRepository {
-  DiaryRepository(this._client);
+  DiaryRepository(this._database, this._userId);
 
-  final SupabaseClient _client;
+  final AppDatabase _database;
+  final String _userId;
   static const _uuid = Uuid();
 
-  String get _userId => _client.auth.currentUser!.id;
-
-  Future<List<DiaryEntry>> list() async {
-    final rows = await _client
-        .from('diary_entries')
-        .select()
-        .order('entry_date', ascending: false)
-        .order('created_at', ascending: false);
-
-    return rows.map((row) => DiaryEntry.fromMap(row)).toList();
+  Stream<List<DiaryEntry>> watch() {
+    return _database
+        .watchDiaryEntries(_userId)
+        .map(
+          (rows) => rows
+              .map((row) => DiaryEntry.fromMap(localDiaryEntryToRemoteMap(row)))
+              .toList(),
+        );
   }
 
   Future<void> save({
@@ -27,9 +26,9 @@ class DiaryRepository {
     required String content,
     String? mood,
     required List<String> tags,
-  }) async {
+  }) {
     final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('diary_entries').upsert({
+    return _database.saveDiaryEntry({
       'id': id ?? _uuid.v4(),
       'user_id': _userId,
       'entry_date': entryDate.toIso8601String().split('T').first,
@@ -42,7 +41,7 @@ class DiaryRepository {
     });
   }
 
-  Future<void> delete(String id) async {
-    await _client.from('diary_entries').delete().eq('id', id);
+  Future<void> delete(String id) {
+    return _database.deleteDiaryEntry(_userId, id);
   }
 }
