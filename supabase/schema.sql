@@ -80,14 +80,12 @@ create table if not exists public.calendar_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
-  starts_at timestamptz not null,
-  ends_at timestamptz not null,
-  location text,
+  event_date date not null,
+  is_completed boolean not null default false,
   note text,
   remind_at timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  check (ends_at > starts_at)
+  updated_at timestamptz not null default now()
 );
 
 alter table public.tasks enable row level security;

@@ -30,49 +30,59 @@ class EventEditPage extends ConsumerStatefulWidget {
 class _EventEditPageState extends ConsumerState<EventEditPage> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
-  late final TextEditingController _startsAtController;
-  late final TextEditingController _endsAtController;
-  late final TextEditingController _locationController;
+  late final TextEditingController _dateController;
   late final TextEditingController _noteController;
   late final TextEditingController _remindAtController;
+  late bool _isCompleted;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    final now = widget.initialDate ?? DateTime.now();
     final event = widget.event;
+    final initialDate =
+        event?.scheduledDate ?? widget.initialDate ?? DateTime.now();
     _titleController = TextEditingController(text: event?.title ?? '');
-    _startsAtController = TextEditingController(
-      text: AppDateUtils.formatDateTime(event?.startsAt ?? now),
+    _dateController = TextEditingController(
+      text: AppDateUtils.formatDate(initialDate),
     );
-    _endsAtController = TextEditingController(
-      text: AppDateUtils.formatDateTime(
-        event?.endsAt ?? now.add(const Duration(hours: 1)),
-      ),
-    );
-    _locationController = TextEditingController(text: event?.location ?? '');
     _noteController = TextEditingController(text: event?.note ?? '');
     _remindAtController = TextEditingController(
       text: event?.remindAt == null
           ? ''
           : AppDateUtils.formatDateTime(event!.remindAt!),
     );
+    _isCompleted = event?.isCompleted ?? false;
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _startsAtController.dispose();
-    _endsAtController.dispose();
-    _locationController.dispose();
+    _dateController.dispose();
     _noteController.dispose();
     _remindAtController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDateTime(TextEditingController controller) async {
+  Future<void> _pickDate() async {
     final initial =
-        AppDateUtils.parseNullable(controller.text) ?? DateTime.now();
+        AppDateUtils.parseNullable(_dateController.text) ?? DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDate: initial,
+    );
+    if (date != null) {
+      _dateController.text = AppDateUtils.formatDate(date);
+    }
+  }
+
+  Future<void> _pickReminder() async {
+    final initial =
+        AppDateUtils.parseNullable(_remindAtController.text) ??
+        AppDateUtils.parseNullable(_dateController.text) ??
+        DateTime.now();
     final date = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -89,39 +99,66 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
     if (time == null) {
       return;
     }
-    controller.text = AppDateUtils.formatDateTime(
+    _remindAtController.text = AppDateUtils.formatDateTime(
       DateTime(date.year, date.month, date.day, time.hour, time.minute),
     );
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!.validate() || _isSaving) {
       return;
     }
-    final startsAt = AppDateUtils.parseNullable(_startsAtController.text)!;
-    final endsAt = AppDateUtils.parseNullable(_endsAtController.text)!;
-    if (!endsAt.isAfter(startsAt)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间。')));
-      return;
+    setState(() => _isSaving = true);
+    try {
+      await ref
+          .read(calendarRepositoryProvider)
+          .save(
+            id: widget.event?.id,
+            title: _titleController.text.trim(),
+            scheduledDate: AppDateUtils.parseNullable(_dateController.text)!,
+            isCompleted: _isCompleted,
+            note: _noteController.text.trim().isEmpty
+                ? null
+                : _noteController.text.trim(),
+            remindAt: AppDateUtils.parseNullable(_remindAtController.text),
+          );
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
+  }
 
-    await ref
-        .read(calendarRepositoryProvider)
-        .save(
-          id: widget.event?.id,
-          title: _titleController.text.trim(),
-          startsAt: startsAt,
-          endsAt: endsAt,
-          location: _locationController.text.trim().isEmpty
-              ? null
-              : _locationController.text.trim(),
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-          remindAt: AppDateUtils.parseNullable(_remindAtController.text),
-        );
+  Future<void> _delete() async {
+    final event = widget.event;
+    if (event == null || _isSaving) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除待办？'),
+        content: Text('“${event.title}”删除后无法恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() => _isSaving = true);
+    await ref.read(calendarRepositoryProvider).delete(event.id);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -145,7 +182,7 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  widget.event == null ? '新建日程' : '编辑日程',
+                  widget.event == null ? '新建日程待办' : '编辑日程待办',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
@@ -156,19 +193,12 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
                       value == null || value.trim().isEmpty ? '请输入标题' : null,
                 ),
                 const SizedBox(height: 12),
-                _DateTimeField(
-                  controller: _startsAtController,
-                  label: '开始时间',
-                  onPick: () => _pickDateTime(_startsAtController),
+                _PickerField(
+                  controller: _dateController,
+                  label: '日期',
+                  icon: Icons.calendar_today_outlined,
+                  onPick: _pickDate,
                 ),
-                const SizedBox(height: 12),
-                _DateTimeField(
-                  controller: _endsAtController,
-                  label: '结束时间',
-                  onPick: () => _pickDateTime(_endsAtController),
-                ),
-                const SizedBox(height: 12),
-                AppTextField(controller: _locationController, label: '地点'),
                 const SizedBox(height: 12),
                 AppTextField(
                   controller: _noteController,
@@ -176,18 +206,40 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
                   maxLines: 3,
                 ),
                 const SizedBox(height: 12),
-                _DateTimeField(
+                _PickerField(
                   controller: _remindAtController,
                   label: '提醒时间',
+                  icon: Icons.schedule_outlined,
                   required: false,
-                  onPick: () => _pickDateTime(_remindAtController),
+                  onPick: _pickReminder,
                 ),
+                if (widget.event != null) ...[
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('已完成'),
+                    value: _isCompleted,
+                    onChanged: _isSaving
+                        ? null
+                        : (value) =>
+                              setState(() => _isCompleted = value ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: _save,
+                  onPressed: _isSaving ? null : _save,
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存'),
+                  label: Text(_isSaving ? '处理中…' : '保存'),
                 ),
+                if (widget.event != null) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _isSaving ? null : _delete,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('删除待办'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -197,16 +249,18 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
   }
 }
 
-class _DateTimeField extends StatelessWidget {
-  const _DateTimeField({
+class _PickerField extends StatelessWidget {
+  const _PickerField({
     required this.controller,
     required this.label,
+    required this.icon,
     required this.onPick,
     this.required = true,
   });
 
   final TextEditingController controller;
   final String label;
+  final IconData icon;
   final VoidCallback onPick;
   final bool required;
 
@@ -226,9 +280,9 @@ class _DateTimeField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         suffixIcon: IconButton(
-          tooltip: '选择时间',
+          tooltip: '选择$label',
           onPressed: onPick,
-          icon: const Icon(Icons.schedule_outlined),
+          icon: Icon(icon),
         ),
       ),
     );

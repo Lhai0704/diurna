@@ -118,8 +118,19 @@ class _ScrollableMonthCalendarState extends State<_ScrollableMonthCalendar> {
     final eventsByDate = <String, List<CalendarEvent>>{};
 
     for (final event in widget.events) {
-      final key = _dateKey(event.startsAt);
+      final key = _dateKey(event.scheduledDate);
       eventsByDate.putIfAbsent(key, () => []).add(event);
+    }
+    for (final events in eventsByDate.values) {
+      events.sort((left, right) {
+        final completionOrder = (left.isCompleted ? 1 : 0).compareTo(
+          right.isCompleted ? 1 : 0,
+        );
+        if (completionOrder != 0) {
+          return completionOrder;
+        }
+        return left.createdAt.compareTo(right.createdAt);
+      });
     }
 
     // Build all months eagerly so today's cell has a layout context for
@@ -197,7 +208,7 @@ class _MonthSection extends StatelessWidget {
             itemCount: itemCount,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              childAspectRatio: 0.95,
+              mainAxisExtent: 132,
             ),
             itemBuilder: (context, index) {
               final dayNumber = index - leadingEmptyDays + 1;
@@ -229,7 +240,7 @@ class _EmptyDayCell extends StatelessWidget {
   }
 }
 
-class _DayCell extends StatelessWidget {
+class _DayCell extends ConsumerWidget {
   const _DayCell({
     super.key,
     required this.day,
@@ -242,7 +253,7 @@ class _DayCell extends StatelessWidget {
   final List<CalendarEvent> events;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final borderColor = isToday
@@ -264,36 +275,89 @@ class _DayCell extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '${day.day}',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: isToday ? colorScheme.primary : null,
-                ),
+              Row(
+                children: [
+                  Text(
+                    '${day.day}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: isToday ? colorScheme.primary : null,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (events.length > 5)
+                    Text(
+                      '+${events.length - 5}',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                ],
               ),
               const SizedBox(height: 4),
               Expanded(
                 child: ListView.builder(
                   padding: EdgeInsets.zero,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: events.length > 3 ? 3 : events.length,
+                  itemCount: events.length > 5 ? 5 : events.length,
                   itemBuilder: (context, index) {
                     final event = events[index];
-                    return Text(
-                      event.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
+                    return _CalendarTodoRow(
+                      event: event,
+                      onToggle: (completed) => ref
+                          .read(calendarRepositoryProvider)
+                          .setCompleted(event, completed),
                     );
                   },
                 ),
               ),
-              if (events.length > 3)
-                Text(
-                  '+${events.length - 3}',
-                  style: theme.textTheme.labelSmall,
-                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarTodoRow extends StatelessWidget {
+  const _CalendarTodoRow({required this.event, required this.onToggle});
+
+  final CalendarEvent event;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      decoration: event.isCompleted ? TextDecoration.lineThrough : null,
+      color: event.isCompleted
+          ? Theme.of(context).colorScheme.onSurfaceVariant
+          : null,
+    );
+
+    return SizedBox(
+      height: 19,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(3),
+        onTap: () => showEventEditPage(context, event: event),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: Checkbox(
+                value: event.isCompleted,
+                onChanged: (value) => onToggle(value ?? false),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Expanded(
+              child: Text(
+                event.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textStyle,
+              ),
+            ),
+          ],
         ),
       ),
     );

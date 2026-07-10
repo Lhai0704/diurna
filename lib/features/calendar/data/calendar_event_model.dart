@@ -3,11 +3,10 @@ class CalendarEvent {
     required this.id,
     required this.userId,
     required this.title,
-    required this.startsAt,
-    required this.endsAt,
+    required this.scheduledDate,
+    required this.isCompleted,
     required this.createdAt,
     required this.updatedAt,
-    this.location,
     this.note,
     this.remindAt,
   });
@@ -15,9 +14,8 @@ class CalendarEvent {
   final String id;
   final String userId;
   final String title;
-  final DateTime startsAt;
-  final DateTime endsAt;
-  final String? location;
+  final DateTime scheduledDate;
+  final bool isCompleted;
   final String? note;
   final DateTime? remindAt;
   final DateTime createdAt;
@@ -28,9 +26,8 @@ class CalendarEvent {
       id: map['id'] as String,
       userId: map['user_id'] as String,
       title: map['title'] as String,
-      startsAt: DateTime.parse(map['starts_at'] as String),
-      endsAt: DateTime.parse(map['ends_at'] as String),
-      location: map['location'] as String?,
+      scheduledDate: DateTime.parse(map['event_date'] as String),
+      isCompleted: map['is_completed'] as bool? ?? false,
       note: map['note'] as String?,
       remindAt: map['remind_at'] == null
           ? null

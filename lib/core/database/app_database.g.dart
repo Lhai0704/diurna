@@ -1492,36 +1492,32 @@ class $LocalCalendarEventsTable extends LocalCalendarEvents
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _startsAtMeta = const VerificationMeta(
-    'startsAt',
+  static const VerificationMeta _scheduledDateMeta = const VerificationMeta(
+    'scheduledDate',
   );
   @override
-  late final GeneratedColumn<DateTime> startsAt = GeneratedColumn<DateTime>(
-    'starts_at',
+  late final GeneratedColumn<DateTime> scheduledDate =
+      GeneratedColumn<DateTime>(
+        'scheduled_date',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _isCompletedMeta = const VerificationMeta(
+    'isCompleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isCompleted = GeneratedColumn<bool>(
+    'is_completed',
     aliasedName,
     false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _endsAtMeta = const VerificationMeta('endsAt');
-  @override
-  late final GeneratedColumn<DateTime> endsAt = GeneratedColumn<DateTime>(
-    'ends_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _locationMeta = const VerificationMeta(
-    'location',
-  );
-  @override
-  late final GeneratedColumn<String> location = GeneratedColumn<String>(
-    'location',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
+    type: DriftSqlType.bool,
     requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_completed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
   );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
@@ -1570,9 +1566,8 @@ class $LocalCalendarEventsTable extends LocalCalendarEvents
     id,
     userId,
     title,
-    startsAt,
-    endsAt,
-    location,
+    scheduledDate,
+    isCompleted,
     note,
     remindAt,
     createdAt,
@@ -1611,26 +1606,24 @@ class $LocalCalendarEventsTable extends LocalCalendarEvents
     } else if (isInserting) {
       context.missing(_titleMeta);
     }
-    if (data.containsKey('starts_at')) {
+    if (data.containsKey('scheduled_date')) {
       context.handle(
-        _startsAtMeta,
-        startsAt.isAcceptableOrUnknown(data['starts_at']!, _startsAtMeta),
+        _scheduledDateMeta,
+        scheduledDate.isAcceptableOrUnknown(
+          data['scheduled_date']!,
+          _scheduledDateMeta,
+        ),
       );
     } else if (isInserting) {
-      context.missing(_startsAtMeta);
+      context.missing(_scheduledDateMeta);
     }
-    if (data.containsKey('ends_at')) {
+    if (data.containsKey('is_completed')) {
       context.handle(
-        _endsAtMeta,
-        endsAt.isAcceptableOrUnknown(data['ends_at']!, _endsAtMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_endsAtMeta);
-    }
-    if (data.containsKey('location')) {
-      context.handle(
-        _locationMeta,
-        location.isAcceptableOrUnknown(data['location']!, _locationMeta),
+        _isCompletedMeta,
+        isCompleted.isAcceptableOrUnknown(
+          data['is_completed']!,
+          _isCompletedMeta,
+        ),
       );
     }
     if (data.containsKey('note')) {
@@ -1682,18 +1675,14 @@ class $LocalCalendarEventsTable extends LocalCalendarEvents
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       )!,
-      startsAt: attachedDatabase.typeMapping.read(
+      scheduledDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
-        data['${effectivePrefix}starts_at'],
+        data['${effectivePrefix}scheduled_date'],
       )!,
-      endsAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}ends_at'],
+      isCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_completed'],
       )!,
-      location: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}location'],
-      ),
       note: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}note'],
@@ -1724,9 +1713,8 @@ class LocalCalendarEvent extends DataClass
   final String id;
   final String userId;
   final String title;
-  final DateTime startsAt;
-  final DateTime endsAt;
-  final String? location;
+  final DateTime scheduledDate;
+  final bool isCompleted;
   final String? note;
   final DateTime? remindAt;
   final DateTime createdAt;
@@ -1735,9 +1723,8 @@ class LocalCalendarEvent extends DataClass
     required this.id,
     required this.userId,
     required this.title,
-    required this.startsAt,
-    required this.endsAt,
-    this.location,
+    required this.scheduledDate,
+    required this.isCompleted,
     this.note,
     this.remindAt,
     required this.createdAt,
@@ -1749,11 +1736,8 @@ class LocalCalendarEvent extends DataClass
     map['id'] = Variable<String>(id);
     map['user_id'] = Variable<String>(userId);
     map['title'] = Variable<String>(title);
-    map['starts_at'] = Variable<DateTime>(startsAt);
-    map['ends_at'] = Variable<DateTime>(endsAt);
-    if (!nullToAbsent || location != null) {
-      map['location'] = Variable<String>(location);
-    }
+    map['scheduled_date'] = Variable<DateTime>(scheduledDate);
+    map['is_completed'] = Variable<bool>(isCompleted);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
@@ -1770,11 +1754,8 @@ class LocalCalendarEvent extends DataClass
       id: Value(id),
       userId: Value(userId),
       title: Value(title),
-      startsAt: Value(startsAt),
-      endsAt: Value(endsAt),
-      location: location == null && nullToAbsent
-          ? const Value.absent()
-          : Value(location),
+      scheduledDate: Value(scheduledDate),
+      isCompleted: Value(isCompleted),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       remindAt: remindAt == null && nullToAbsent
           ? const Value.absent()
@@ -1793,9 +1774,8 @@ class LocalCalendarEvent extends DataClass
       id: serializer.fromJson<String>(json['id']),
       userId: serializer.fromJson<String>(json['userId']),
       title: serializer.fromJson<String>(json['title']),
-      startsAt: serializer.fromJson<DateTime>(json['startsAt']),
-      endsAt: serializer.fromJson<DateTime>(json['endsAt']),
-      location: serializer.fromJson<String?>(json['location']),
+      scheduledDate: serializer.fromJson<DateTime>(json['scheduledDate']),
+      isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       note: serializer.fromJson<String?>(json['note']),
       remindAt: serializer.fromJson<DateTime?>(json['remindAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -1809,9 +1789,8 @@ class LocalCalendarEvent extends DataClass
       'id': serializer.toJson<String>(id),
       'userId': serializer.toJson<String>(userId),
       'title': serializer.toJson<String>(title),
-      'startsAt': serializer.toJson<DateTime>(startsAt),
-      'endsAt': serializer.toJson<DateTime>(endsAt),
-      'location': serializer.toJson<String?>(location),
+      'scheduledDate': serializer.toJson<DateTime>(scheduledDate),
+      'isCompleted': serializer.toJson<bool>(isCompleted),
       'note': serializer.toJson<String?>(note),
       'remindAt': serializer.toJson<DateTime?>(remindAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1823,9 +1802,8 @@ class LocalCalendarEvent extends DataClass
     String? id,
     String? userId,
     String? title,
-    DateTime? startsAt,
-    DateTime? endsAt,
-    Value<String?> location = const Value.absent(),
+    DateTime? scheduledDate,
+    bool? isCompleted,
     Value<String?> note = const Value.absent(),
     Value<DateTime?> remindAt = const Value.absent(),
     DateTime? createdAt,
@@ -1834,9 +1812,8 @@ class LocalCalendarEvent extends DataClass
     id: id ?? this.id,
     userId: userId ?? this.userId,
     title: title ?? this.title,
-    startsAt: startsAt ?? this.startsAt,
-    endsAt: endsAt ?? this.endsAt,
-    location: location.present ? location.value : this.location,
+    scheduledDate: scheduledDate ?? this.scheduledDate,
+    isCompleted: isCompleted ?? this.isCompleted,
     note: note.present ? note.value : this.note,
     remindAt: remindAt.present ? remindAt.value : this.remindAt,
     createdAt: createdAt ?? this.createdAt,
@@ -1847,9 +1824,12 @@ class LocalCalendarEvent extends DataClass
       id: data.id.present ? data.id.value : this.id,
       userId: data.userId.present ? data.userId.value : this.userId,
       title: data.title.present ? data.title.value : this.title,
-      startsAt: data.startsAt.present ? data.startsAt.value : this.startsAt,
-      endsAt: data.endsAt.present ? data.endsAt.value : this.endsAt,
-      location: data.location.present ? data.location.value : this.location,
+      scheduledDate: data.scheduledDate.present
+          ? data.scheduledDate.value
+          : this.scheduledDate,
+      isCompleted: data.isCompleted.present
+          ? data.isCompleted.value
+          : this.isCompleted,
       note: data.note.present ? data.note.value : this.note,
       remindAt: data.remindAt.present ? data.remindAt.value : this.remindAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1863,9 +1843,8 @@ class LocalCalendarEvent extends DataClass
           ..write('id: $id, ')
           ..write('userId: $userId, ')
           ..write('title: $title, ')
-          ..write('startsAt: $startsAt, ')
-          ..write('endsAt: $endsAt, ')
-          ..write('location: $location, ')
+          ..write('scheduledDate: $scheduledDate, ')
+          ..write('isCompleted: $isCompleted, ')
           ..write('note: $note, ')
           ..write('remindAt: $remindAt, ')
           ..write('createdAt: $createdAt, ')
@@ -1879,9 +1858,8 @@ class LocalCalendarEvent extends DataClass
     id,
     userId,
     title,
-    startsAt,
-    endsAt,
-    location,
+    scheduledDate,
+    isCompleted,
     note,
     remindAt,
     createdAt,
@@ -1894,9 +1872,8 @@ class LocalCalendarEvent extends DataClass
           other.id == this.id &&
           other.userId == this.userId &&
           other.title == this.title &&
-          other.startsAt == this.startsAt &&
-          other.endsAt == this.endsAt &&
-          other.location == this.location &&
+          other.scheduledDate == this.scheduledDate &&
+          other.isCompleted == this.isCompleted &&
           other.note == this.note &&
           other.remindAt == this.remindAt &&
           other.createdAt == this.createdAt &&
@@ -1907,9 +1884,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
   final Value<String> id;
   final Value<String> userId;
   final Value<String> title;
-  final Value<DateTime> startsAt;
-  final Value<DateTime> endsAt;
-  final Value<String?> location;
+  final Value<DateTime> scheduledDate;
+  final Value<bool> isCompleted;
   final Value<String?> note;
   final Value<DateTime?> remindAt;
   final Value<DateTime> createdAt;
@@ -1919,9 +1895,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
     this.id = const Value.absent(),
     this.userId = const Value.absent(),
     this.title = const Value.absent(),
-    this.startsAt = const Value.absent(),
-    this.endsAt = const Value.absent(),
-    this.location = const Value.absent(),
+    this.scheduledDate = const Value.absent(),
+    this.isCompleted = const Value.absent(),
     this.note = const Value.absent(),
     this.remindAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1932,9 +1907,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
     required String id,
     required String userId,
     required String title,
-    required DateTime startsAt,
-    required DateTime endsAt,
-    this.location = const Value.absent(),
+    required DateTime scheduledDate,
+    this.isCompleted = const Value.absent(),
     this.note = const Value.absent(),
     this.remindAt = const Value.absent(),
     required DateTime createdAt,
@@ -1943,17 +1917,15 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
   }) : id = Value(id),
        userId = Value(userId),
        title = Value(title),
-       startsAt = Value(startsAt),
-       endsAt = Value(endsAt),
+       scheduledDate = Value(scheduledDate),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<LocalCalendarEvent> custom({
     Expression<String>? id,
     Expression<String>? userId,
     Expression<String>? title,
-    Expression<DateTime>? startsAt,
-    Expression<DateTime>? endsAt,
-    Expression<String>? location,
+    Expression<DateTime>? scheduledDate,
+    Expression<bool>? isCompleted,
     Expression<String>? note,
     Expression<DateTime>? remindAt,
     Expression<DateTime>? createdAt,
@@ -1964,9 +1936,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
       if (id != null) 'id': id,
       if (userId != null) 'user_id': userId,
       if (title != null) 'title': title,
-      if (startsAt != null) 'starts_at': startsAt,
-      if (endsAt != null) 'ends_at': endsAt,
-      if (location != null) 'location': location,
+      if (scheduledDate != null) 'scheduled_date': scheduledDate,
+      if (isCompleted != null) 'is_completed': isCompleted,
       if (note != null) 'note': note,
       if (remindAt != null) 'remind_at': remindAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -1979,9 +1950,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
     Value<String>? id,
     Value<String>? userId,
     Value<String>? title,
-    Value<DateTime>? startsAt,
-    Value<DateTime>? endsAt,
-    Value<String?>? location,
+    Value<DateTime>? scheduledDate,
+    Value<bool>? isCompleted,
     Value<String?>? note,
     Value<DateTime?>? remindAt,
     Value<DateTime>? createdAt,
@@ -1992,9 +1962,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       title: title ?? this.title,
-      startsAt: startsAt ?? this.startsAt,
-      endsAt: endsAt ?? this.endsAt,
-      location: location ?? this.location,
+      scheduledDate: scheduledDate ?? this.scheduledDate,
+      isCompleted: isCompleted ?? this.isCompleted,
       note: note ?? this.note,
       remindAt: remindAt ?? this.remindAt,
       createdAt: createdAt ?? this.createdAt,
@@ -2015,14 +1984,11 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
     if (title.present) {
       map['title'] = Variable<String>(title.value);
     }
-    if (startsAt.present) {
-      map['starts_at'] = Variable<DateTime>(startsAt.value);
+    if (scheduledDate.present) {
+      map['scheduled_date'] = Variable<DateTime>(scheduledDate.value);
     }
-    if (endsAt.present) {
-      map['ends_at'] = Variable<DateTime>(endsAt.value);
-    }
-    if (location.present) {
-      map['location'] = Variable<String>(location.value);
+    if (isCompleted.present) {
+      map['is_completed'] = Variable<bool>(isCompleted.value);
     }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
@@ -2048,9 +2014,8 @@ class LocalCalendarEventsCompanion extends UpdateCompanion<LocalCalendarEvent> {
           ..write('id: $id, ')
           ..write('userId: $userId, ')
           ..write('title: $title, ')
-          ..write('startsAt: $startsAt, ')
-          ..write('endsAt: $endsAt, ')
-          ..write('location: $location, ')
+          ..write('scheduledDate: $scheduledDate, ')
+          ..write('isCompleted: $isCompleted, ')
           ..write('note: $note, ')
           ..write('remindAt: $remindAt, ')
           ..write('createdAt: $createdAt, ')
@@ -3360,9 +3325,8 @@ typedef $$LocalCalendarEventsTableCreateCompanionBuilder =
       required String id,
       required String userId,
       required String title,
-      required DateTime startsAt,
-      required DateTime endsAt,
-      Value<String?> location,
+      required DateTime scheduledDate,
+      Value<bool> isCompleted,
       Value<String?> note,
       Value<DateTime?> remindAt,
       required DateTime createdAt,
@@ -3374,9 +3338,8 @@ typedef $$LocalCalendarEventsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> userId,
       Value<String> title,
-      Value<DateTime> startsAt,
-      Value<DateTime> endsAt,
-      Value<String?> location,
+      Value<DateTime> scheduledDate,
+      Value<bool> isCompleted,
       Value<String?> note,
       Value<DateTime?> remindAt,
       Value<DateTime> createdAt,
@@ -3408,18 +3371,13 @@ class $$LocalCalendarEventsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get startsAt => $composableBuilder(
-    column: $table.startsAt,
+  ColumnFilters<DateTime> get scheduledDate => $composableBuilder(
+    column: $table.scheduledDate,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get endsAt => $composableBuilder(
-    column: $table.endsAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get location => $composableBuilder(
-    column: $table.location,
+  ColumnFilters<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3468,18 +3426,13 @@ class $$LocalCalendarEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get startsAt => $composableBuilder(
-    column: $table.startsAt,
+  ColumnOrderings<DateTime> get scheduledDate => $composableBuilder(
+    column: $table.scheduledDate,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get endsAt => $composableBuilder(
-    column: $table.endsAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get location => $composableBuilder(
-    column: $table.location,
+  ColumnOrderings<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3522,14 +3475,15 @@ class $$LocalCalendarEventsTableAnnotationComposer
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get startsAt =>
-      $composableBuilder(column: $table.startsAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get scheduledDate => $composableBuilder(
+    column: $table.scheduledDate,
+    builder: (column) => column,
+  );
 
-  GeneratedColumn<DateTime> get endsAt =>
-      $composableBuilder(column: $table.endsAt, builder: (column) => column);
-
-  GeneratedColumn<String> get location =>
-      $composableBuilder(column: $table.location, builder: (column) => column);
+  GeneratedColumn<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
@@ -3590,9 +3544,8 @@ class $$LocalCalendarEventsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> userId = const Value.absent(),
                 Value<String> title = const Value.absent(),
-                Value<DateTime> startsAt = const Value.absent(),
-                Value<DateTime> endsAt = const Value.absent(),
-                Value<String?> location = const Value.absent(),
+                Value<DateTime> scheduledDate = const Value.absent(),
+                Value<bool> isCompleted = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime?> remindAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -3602,9 +3555,8 @@ class $$LocalCalendarEventsTableTableManager
                 id: id,
                 userId: userId,
                 title: title,
-                startsAt: startsAt,
-                endsAt: endsAt,
-                location: location,
+                scheduledDate: scheduledDate,
+                isCompleted: isCompleted,
                 note: note,
                 remindAt: remindAt,
                 createdAt: createdAt,
@@ -3616,9 +3568,8 @@ class $$LocalCalendarEventsTableTableManager
                 required String id,
                 required String userId,
                 required String title,
-                required DateTime startsAt,
-                required DateTime endsAt,
-                Value<String?> location = const Value.absent(),
+                required DateTime scheduledDate,
+                Value<bool> isCompleted = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime?> remindAt = const Value.absent(),
                 required DateTime createdAt,
@@ -3628,9 +3579,8 @@ class $$LocalCalendarEventsTableTableManager
                 id: id,
                 userId: userId,
                 title: title,
-                startsAt: startsAt,
-                endsAt: endsAt,
-                location: location,
+                scheduledDate: scheduledDate,
+                isCompleted: isCompleted,
                 note: note,
                 remindAt: remindAt,
                 createdAt: createdAt,

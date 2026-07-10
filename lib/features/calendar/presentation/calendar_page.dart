@@ -19,7 +19,7 @@ class CalendarPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('日程'),
+        title: const Text('日程待办'),
         actions: [
           const SyncStatusIcon(),
           Padding(
@@ -35,7 +35,7 @@ class CalendarPage extends ConsumerWidget {
       ),
       body: events.when(
         data: (items) => items.isEmpty
-            ? EmptyView(message: todayOnly ? '今天没有日程。' : '还没有日程。')
+            ? EmptyView(message: todayOnly ? '今天没有待办。' : '还没有日程待办。')
             : RefreshIndicator(
                 onRefresh: () => triggerSync(ref),
                 child: ListView.builder(
@@ -51,7 +51,7 @@ class CalendarPage extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showEventEditPage(context),
         icon: const Icon(Icons.add),
-        label: const Text('新建日程'),
+        label: const Text('新建待办'),
       ),
     );
   }
@@ -78,11 +78,21 @@ class _EventTile extends ConsumerWidget {
         return true;
       },
       child: ListTile(
-        title: Text(event.title),
+        leading: Checkbox(
+          value: event.isCompleted,
+          onChanged: (value) => ref
+              .read(calendarRepositoryProvider)
+              .setCompleted(event, value ?? false),
+        ),
+        title: Text(
+          event.title,
+          style: event.isCompleted
+              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              : null,
+        ),
         subtitle: Text(
           [
-            '${AppDateUtils.formatDateTime(event.startsAt)} - ${AppDateUtils.formatDateTime(event.endsAt)}',
-            if (event.location?.isNotEmpty ?? false) event.location!,
+            AppDateUtils.formatDate(event.scheduledDate),
             if (event.remindAt != null)
               '提醒 ${AppDateUtils.formatDateTime(event.remindAt!)}',
           ].join(' · '),

@@ -46,9 +46,8 @@ class LocalCalendarEvents extends Table {
   TextColumn get id => text()();
   TextColumn get userId => text()();
   TextColumn get title => text()();
-  DateTimeColumn get startsAt => dateTime()();
-  DateTimeColumn get endsAt => dateTime()();
-  TextColumn get location => text().nullable()();
+  DateTimeColumn get scheduledDate => dateTime()();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
   TextColumn get note => text().nullable()();
   DateTimeColumn get remindAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
@@ -94,7 +93,21 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (migrator) => migrator.createAll(),
+    onUpgrade: (migrator, from, to) async {
+      if (from < 2) {
+        await customStatement(
+          "DELETE FROM pending_sync_operations WHERE entity_type = 'calendar_events'",
+        );
+        await migrator.deleteTable('local_calendar_events');
+        await migrator.createTable(localCalendarEvents);
+      }
+    },
+  );
 
   Stream<List<LocalTask>> watchTasks(String userId) {
     final query = select(localTasks)
@@ -138,11 +151,15 @@ class AppDatabase extends _$AppDatabase {
       final end = start.add(const Duration(days: 1));
       query.where(
         (table) =>
-            table.startsAt.isBiggerOrEqualValue(start) &
-            table.startsAt.isSmallerThanValue(end),
+            table.scheduledDate.isBiggerOrEqualValue(start) &
+            table.scheduledDate.isSmallerThanValue(end),
       );
     }
-    query.orderBy([(table) => OrderingTerm(expression: table.startsAt)]);
+    query.orderBy([
+      (table) => OrderingTerm(expression: table.scheduledDate),
+      (table) => OrderingTerm(expression: table.isCompleted),
+      (table) => OrderingTerm(expression: table.createdAt),
+    ]);
     return query.watch();
   }
 
@@ -493,9 +510,8 @@ Map<String, dynamic> localCalendarEventToRemoteMap(LocalCalendarEvent row) {
     'id': row.id,
     'user_id': row.userId,
     'title': row.title,
-    'starts_at': row.startsAt.toUtc().toIso8601String(),
-    'ends_at': row.endsAt.toUtc().toIso8601String(),
-    'location': row.location,
+    'event_date': _formatDateOnly(row.scheduledDate),
+    'is_completed': row.isCompleted,
     'note': row.note,
     'remind_at': row.remindAt?.toUtc().toIso8601String(),
     'created_at': row.createdAt.toUtc().toIso8601String(),
@@ -543,14 +559,20 @@ LocalCalendarEventsCompanion _calendarCompanion(Map<String, dynamic> map) {
     id: map['id'] as String,
     userId: map['user_id'] as String,
     title: map['title'] as String,
-    startsAt: _parseDateTime(map['starts_at'])!,
-    endsAt: _parseDateTime(map['ends_at'])!,
-    location: Value(map['location'] as String?),
+    scheduledDate: _parseDateTime(map['event_date'])!,
+    isCompleted: Value(map['is_completed'] as bool? ?? false),
     note: Value(map['note'] as String?),
     remindAt: Value(_parseDateTime(map['remind_at'])),
     createdAt: _parseDateTime(map['created_at']) ?? DateTime.now().toUtc(),
     updatedAt: _parseDateTime(map['updated_at']) ?? DateTime.now().toUtc(),
   );
+}
+
+String _formatDateOnly(DateTime value) {
+  final year = value.year.toString().padLeft(4, '0');
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
 }
 
 DateTime? _parseDateTime(dynamic value) {

@@ -25,9 +25,8 @@ class CalendarRepository {
   Future<void> save({
     String? id,
     required String title,
-    required DateTime startsAt,
-    required DateTime endsAt,
-    String? location,
+    required DateTime scheduledDate,
+    bool isCompleted = false,
     String? note,
     DateTime? remindAt,
   }) {
@@ -36,9 +35,8 @@ class CalendarRepository {
       'id': id ?? _uuid.v4(),
       'user_id': _userId,
       'title': title,
-      'starts_at': startsAt.toUtc().toIso8601String(),
-      'ends_at': endsAt.toUtc().toIso8601String(),
-      'location': location,
+      'event_date': _formatDate(scheduledDate),
+      'is_completed': isCompleted,
       'note': note,
       'remind_at': remindAt?.toUtc().toIso8601String(),
       'created_at': now,
@@ -46,7 +44,25 @@ class CalendarRepository {
     });
   }
 
+  Future<void> setCompleted(CalendarEvent event, bool completed) {
+    return save(
+      id: event.id,
+      title: event.title,
+      scheduledDate: event.scheduledDate,
+      isCompleted: completed,
+      note: event.note,
+      remindAt: event.remindAt,
+    );
+  }
+
   Future<void> delete(String id) {
     return _database.deleteCalendarEvent(_userId, id);
+  }
+
+  String _formatDate(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 }
