@@ -240,7 +240,7 @@ class _EmptyDayCell extends StatelessWidget {
   }
 }
 
-class _DayCell extends ConsumerWidget {
+class _DayCell extends StatelessWidget {
   const _DayCell({
     super.key,
     required this.day,
@@ -253,7 +253,7 @@ class _DayCell extends ConsumerWidget {
   final List<CalendarEvent> events;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final borderColor = isToday
@@ -299,12 +299,7 @@ class _DayCell extends ConsumerWidget {
                   itemCount: events.length > 5 ? 5 : events.length,
                   itemBuilder: (context, index) {
                     final event = events[index];
-                    return _CalendarTodoRow(
-                      event: event,
-                      onToggle: (completed) => ref
-                          .read(calendarRepositoryProvider)
-                          .setCompleted(event, completed),
-                    );
+                    return _CalendarTodoRow(event: event);
                   },
                 ),
               ),
@@ -317,10 +312,9 @@ class _DayCell extends ConsumerWidget {
 }
 
 class _CalendarTodoRow extends StatelessWidget {
-  const _CalendarTodoRow({required this.event, required this.onToggle});
+  const _CalendarTodoRow({required this.event});
 
   final CalendarEvent event;
-  final ValueChanged<bool> onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -336,28 +330,14 @@ class _CalendarTodoRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(3),
         onTap: () => showEventEditPage(context, event: event),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: Checkbox(
-                value: event.isCompleted,
-                onChanged: (value) => onToggle(value ?? false),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-            const SizedBox(width: 3),
-            Expanded(
-              child: Text(
-                event.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textStyle,
-              ),
-            ),
-          ],
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            event.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textStyle,
+          ),
         ),
       ),
     );
@@ -479,10 +459,9 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Stack(
               children: [
-                Expanded(
+                Positioned.fill(
                   child: TextField(
                     controller: _contentController,
                     expands: true,
@@ -492,12 +471,13 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
                     decoration: const InputDecoration(
                       labelText: '正文',
                       alignLabelWithHint: true,
+                      contentPadding: EdgeInsets.fromLTRB(12, 16, 150, 60),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
+                Positioned(
+                  right: 10,
+                  bottom: 10,
                   child: FilledButton.icon(
                     onPressed: () => _save(entry),
                     icon: const Icon(Icons.save_outlined),

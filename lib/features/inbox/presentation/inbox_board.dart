@@ -216,6 +216,7 @@ class _InboxColumns extends StatelessWidget {
               column: InboxColumn.focus,
               items: focus,
               allItems: allItems,
+              compact: !expanded,
               onRefresh: onRefresh,
             ),
           ),
@@ -226,6 +227,7 @@ class _InboxColumns extends StatelessWidget {
               column: InboxColumn.pending,
               items: pending,
               allItems: allItems,
+              compact: !expanded,
               onRefresh: onRefresh,
             ),
           ),
@@ -240,12 +242,14 @@ class _InboxColumnView extends ConsumerWidget {
     required this.column,
     required this.items,
     required this.allItems,
+    required this.compact,
     required this.onRefresh,
   });
 
   final InboxColumn column;
   final List<InboxItem> items;
   final List<InboxItem> allItems;
+  final bool compact;
   final Future<void> Function() onRefresh;
 
   Future<void> _moveToEnd(WidgetRef ref, InboxItem item) async {
@@ -307,7 +311,11 @@ class _InboxColumnView extends ConsumerWidget {
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      return _DropBeforeTarget(item: item, allItems: allItems);
+                      return _DropBeforeTarget(
+                        item: item,
+                        allItems: allItems,
+                        compact: compact,
+                      );
                     },
                   ),
                 ),
@@ -321,10 +329,15 @@ class _InboxColumnView extends ConsumerWidget {
 }
 
 class _DropBeforeTarget extends ConsumerWidget {
-  const _DropBeforeTarget({required this.item, required this.allItems});
+  const _DropBeforeTarget({
+    required this.item,
+    required this.allItems,
+    required this.compact,
+  });
 
   final InboxItem item;
   final List<InboxItem> allItems;
+  final bool compact;
 
   Future<void> _accept(WidgetRef ref, InboxItem dragged) async {
     await ref
@@ -359,15 +372,24 @@ class _DropBeforeTarget extends ConsumerWidget {
                     child: _InboxCard(
                       item: item,
                       allItems: allItems,
+                      compact: compact,
                       interactive: false,
                     ),
                   ),
                 ),
                 childWhenDragging: Opacity(
                   opacity: 0.28,
-                  child: _InboxCard(item: item, allItems: allItems),
+                  child: _InboxCard(
+                    item: item,
+                    allItems: allItems,
+                    compact: compact,
+                  ),
                 ),
-                child: _InboxCard(item: item, allItems: allItems),
+                child: _InboxCard(
+                  item: item,
+                  allItems: allItems,
+                  compact: compact,
+                ),
               ),
             ),
           ],
@@ -394,11 +416,13 @@ class _InboxCard extends ConsumerWidget {
   const _InboxCard({
     required this.item,
     required this.allItems,
+    this.compact = false,
     this.interactive = true,
   });
 
   final InboxItem item;
   final List<InboxItem> allItems;
+  final bool compact;
   final bool interactive;
 
   List<InboxItem> get _children => allItems
@@ -589,6 +613,46 @@ class _InboxCard extends ConsumerWidget {
     }
   }
 
+  Widget _actionMenu(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<_ItemAction>(
+      tooltip: '更多操作',
+      padding: EdgeInsets.zero,
+      icon: const Icon(Icons.more_horiz, size: 20),
+      onSelected: (value) => _handleAction(context, ref, value),
+      itemBuilder: (context) => [
+        const PopupMenuItem(value: _ItemAction.edit, child: Text('编辑')),
+        if (!item.isTopic)
+          const PopupMenuItem(value: _ItemAction.setType, child: Text('设置类型')),
+        PopupMenuItem(
+          value: _ItemAction.moveOtherColumn,
+          child: Text(item.column == InboxColumn.focus ? '移到待整理' : '移到关注中'),
+        ),
+        const PopupMenuItem(value: _ItemAction.moveFirst, child: Text('移到最前')),
+        const PopupMenuItem(value: _ItemAction.moveLast, child: Text('移到最后')),
+        if (!item.isAction)
+          const PopupMenuItem(
+            value: _ItemAction.convertToTask,
+            child: Text('转为待办'),
+          ),
+        if (!item.isTopic)
+          const PopupMenuItem(
+            value: _ItemAction.assignTopic,
+            child: Text('归入主题'),
+          ),
+        PopupMenuItem(
+          value: _ItemAction.pin,
+          child: Text(item.isPinned ? '取消置顶' : '置顶'),
+        ),
+        PopupMenuItem(
+          value: _ItemAction.archive,
+          child: Text(item.isArchived ? '取消归档' : '归档'),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: _ItemAction.delete, child: Text('删除')),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -598,9 +662,12 @@ class _InboxCard extends ConsumerWidget {
         '截止 ${AppDateUtils.formatDate(item.dueDate!)}',
       if (item.isAction && item.priority != null) '优先级 ${item.priority}',
     ];
+    final metadata = details.isEmpty
+        ? _friendlyTime(item.createdAt)
+        : details.join(' · ');
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      margin: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 3 : 5),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(7),
@@ -610,7 +677,9 @@ class _InboxCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(7),
         onTap: interactive ? () => _open(context) : null,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 6, 7),
+          padding: compact
+              ? const EdgeInsets.fromLTRB(8, 5, 4, 5)
+              : const EdgeInsets.fromLTRB(8, 8, 6, 7),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -626,34 +695,54 @@ class _InboxCard extends ConsumerWidget {
                     const _TypeTag(label: '研究主题')
                   else if (item.type != null)
                     _TypeTag(label: item.type!.label),
-                  const Spacer(),
                   if (item.isPinned)
                     Icon(
                       Icons.push_pin,
                       size: 15,
                       color: theme.colorScheme.primary,
                     ),
+                  const SizedBox(width: 4),
+                  if (compact) ...[
+                    Expanded(
+                      child: Text(
+                        metadata,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelSmall,
+                      ),
+                    ),
+                    if (interactive) _actionMenu(context, ref),
+                  ] else
+                    const Spacer(),
                 ],
               ),
-              const SizedBox(height: 7),
+              SizedBox(height: compact ? 3 : 7),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (item.isAction)
-                    Transform.translate(
-                      offset: const Offset(-5, -7),
-                      child: Checkbox(
-                        visualDensity: VisualDensity.compact,
-                        value: item.isCompleted,
-                        onChanged: interactive
-                            ? (value) => _run(
-                                context,
-                                ref,
-                                () => ref
-                                    .read(inboxRepositoryProvider)
-                                    .setCompleted(item, value ?? false),
-                              )
-                            : null,
+                    SizedBox(
+                      width: compact ? 28 : 48,
+                      height: compact ? 28 : 48,
+                      child: Transform.translate(
+                        offset: compact ? Offset.zero : const Offset(-5, -7),
+                        child: Checkbox(
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: compact
+                              ? MaterialTapTargetSize.shrinkWrap
+                              : null,
+                          value: item.isCompleted,
+                          onChanged: interactive
+                              ? (value) => _run(
+                                  context,
+                                  ref,
+                                  () => ref
+                                      .read(inboxRepositoryProvider)
+                                      .setCompleted(item, value ?? false),
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                   Expanded(
@@ -687,78 +776,22 @@ class _InboxCard extends ConsumerWidget {
                 if (children.length > 2)
                   Text('· …', style: theme.textTheme.bodySmall),
               ],
-              const SizedBox(height: 7),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      details.isEmpty
-                          ? _friendlyTime(item.createdAt)
-                          : details.join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall,
+              if (!compact) ...[
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        metadata,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall,
+                      ),
                     ),
-                  ),
-                  if (interactive)
-                    PopupMenuButton<_ItemAction>(
-                      tooltip: '更多操作',
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.more_horiz, size: 20),
-                      onSelected: (value) => _handleAction(context, ref, value),
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: _ItemAction.edit,
-                          child: Text('编辑'),
-                        ),
-                        if (!item.isTopic)
-                          const PopupMenuItem(
-                            value: _ItemAction.setType,
-                            child: Text('设置类型'),
-                          ),
-                        PopupMenuItem(
-                          value: _ItemAction.moveOtherColumn,
-                          child: Text(
-                            item.column == InboxColumn.focus
-                                ? '移到待整理'
-                                : '移到关注中',
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: _ItemAction.moveFirst,
-                          child: Text('移到最前'),
-                        ),
-                        const PopupMenuItem(
-                          value: _ItemAction.moveLast,
-                          child: Text('移到最后'),
-                        ),
-                        if (!item.isAction)
-                          const PopupMenuItem(
-                            value: _ItemAction.convertToTask,
-                            child: Text('转为待办'),
-                          ),
-                        if (!item.isTopic)
-                          const PopupMenuItem(
-                            value: _ItemAction.assignTopic,
-                            child: Text('归入主题'),
-                          ),
-                        PopupMenuItem(
-                          value: _ItemAction.pin,
-                          child: Text(item.isPinned ? '取消置顶' : '置顶'),
-                        ),
-                        PopupMenuItem(
-                          value: _ItemAction.archive,
-                          child: Text(item.isArchived ? '取消归档' : '归档'),
-                        ),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(
-                          value: _ItemAction.delete,
-                          child: Text('删除'),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
+                    if (interactive) _actionMenu(context, ref),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
