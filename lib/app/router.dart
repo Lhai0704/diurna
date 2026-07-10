@@ -6,7 +6,7 @@ import 'package:diurna/features/auth/presentation/register_page.dart';
 import 'package:diurna/features/calendar/presentation/calendar_page.dart';
 import 'package:diurna/features/diary/presentation/diary_list_page.dart';
 import 'package:diurna/features/home/presentation/windows_home_page.dart';
-import 'package:diurna/features/tasks/presentation/task_list_page.dart';
+import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,7 +46,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/tasks',
-                builder: (context, state) => const TaskListPage(),
+                builder: (context, state) => const InboxPage(),
               ),
             ],
           ),
@@ -100,10 +100,7 @@ class HomeShell extends StatelessWidget {
 
     final wide = MediaQuery.sizeOf(context).width >= 720;
     final destinations = const [
-      NavigationDestination(
-        icon: Icon(Icons.check_circle_outline),
-        label: '待办',
-      ),
+      NavigationDestination(icon: Icon(Icons.inbox_outlined), label: '收集箱'),
       NavigationDestination(icon: Icon(Icons.event_note_outlined), label: '日程'),
       NavigationDestination(icon: Icon(Icons.book_outlined), label: '日记'),
     ];
@@ -118,8 +115,8 @@ class HomeShell extends StatelessWidget {
               labelType: NavigationRailLabelType.all,
               destinations: const [
                 NavigationRailDestination(
-                  icon: Icon(Icons.check_circle_outline),
-                  label: Text('待办'),
+                  icon: Icon(Icons.inbox_outlined),
+                  label: Text('收集箱'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.event_note_outlined),

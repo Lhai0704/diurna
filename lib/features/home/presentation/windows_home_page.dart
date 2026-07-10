@@ -5,9 +5,8 @@ import 'package:diurna/features/calendar/presentation/event_edit_page.dart';
 import 'package:diurna/features/calendar/providers/calendar_providers.dart';
 import 'package:diurna/features/diary/data/diary_model.dart';
 import 'package:diurna/features/diary/providers/diary_providers.dart';
-import 'package:diurna/features/tasks/data/task_model.dart';
-import 'package:diurna/features/tasks/presentation/task_edit_page.dart';
-import 'package:diurna/features/tasks/providers/task_providers.dart';
+import 'package:diurna/features/inbox/presentation/inbox_board.dart';
+import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
 import 'package:diurna/shared/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
@@ -450,94 +449,14 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
   }
 }
 
-class _TaskPanel extends ConsumerWidget {
+class _TaskPanel extends StatelessWidget {
   const _TaskPanel();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tasks = ref.watch(tasksProvider);
-
-    return _Panel(
-      title: '综合待办事项',
-      trailing: IconButton(
-        tooltip: '新增待办',
-        onPressed: () => showTaskEditPage(context),
-        icon: const Icon(Icons.add),
-      ),
-      child: tasks.when(
-        data: (items) => items.isEmpty
-            ? const EmptyView(message: '还没有待办事项。')
-            : RefreshIndicator(
-                onRefresh: () => ref.refresh(tasksProvider.future),
-                child: ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) =>
-                      _TaskTile(task: items[index]),
-                ),
-              ),
-        error: (error, stackTrace) => EmptyView(message: error.toString()),
-        loading: () => const LoadingView(),
-      ),
-    );
-  }
-}
-
-class _TaskTile extends ConsumerWidget {
-  const _TaskTile({required this.task});
-
-  final Task task;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final subtitleParts = [
-      if (task.dueDate != null) '截止 ${AppDateUtils.formatDate(task.dueDate!)}',
-      '优先级 ${task.priority}',
-      if (task.note?.isNotEmpty ?? false) task.note!,
-    ];
-
-    return Dismissible(
-      key: ValueKey(task.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        color: Theme.of(context).colorScheme.errorContainer,
-        child: const Icon(Icons.delete_outline),
-      ),
-      confirmDismiss: (_) async {
-        await ref.read(taskRepositoryProvider).delete(task.id);
-        ref.invalidate(tasksProvider);
-        return true;
-      },
-      child: ListTile(
-        leading: Checkbox(
-          value: task.isCompleted,
-          onChanged: (value) async {
-            await ref
-                .read(taskRepositoryProvider)
-                .setCompleted(task, value ?? false);
-            ref.invalidate(tasksProvider);
-          },
-        ),
-        title: Text(
-          task.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: task.isCompleted
-              ? Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  decoration: TextDecoration.lineThrough,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                )
-              : null,
-        ),
-        subtitle: Text(
-          subtitleParts.join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        onTap: () => showTaskEditPage(context, task: task),
-      ),
+  Widget build(BuildContext context) {
+    return InboxBoard(
+      expanded: false,
+      onExpand: () => showExpandedInbox(context),
     );
   }
 }
