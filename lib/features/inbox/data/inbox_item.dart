@@ -79,10 +79,10 @@ class InboxItem {
     return InboxItem(
       id: map['id'] as String,
       userId: map['user_id'] as String,
-      content: map['title'] as String,
+      content: map['content'] as String,
       type: InboxItemTypeX.fromDatabase(map['item_type'] as String?),
       column: InboxColumnX.fromDatabase(map['inbox_column'] as String?),
-      position: (map['sort_order'] as num?)?.toDouble() ?? 0,
+      position: (map['position'] as num?)?.toDouble() ?? 0,
       isArchived: map['is_archived'] as bool? ?? false,
       isPinned: map['is_pinned'] as bool? ?? false,
       isTopic: map['is_topic'] as bool? ?? false,

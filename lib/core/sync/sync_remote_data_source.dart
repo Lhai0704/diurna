@@ -10,12 +10,12 @@ abstract interface class SyncRemoteDataSource {
 
 class RemoteSnapshot {
   const RemoteSnapshot({
-    required this.tasks,
+    required this.inboxItems,
     required this.diaryEntries,
     required this.calendarEvents,
   });
 
-  final List<Map<String, dynamic>> tasks;
+  final List<Map<String, dynamic>> inboxItems;
   final List<Map<String, dynamic>> diaryEntries;
   final List<Map<String, dynamic>> calendarEvents;
 }
@@ -38,12 +38,12 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
   @override
   Future<RemoteSnapshot> fetchSnapshot() async {
     final results = await Future.wait([
-      _client.from('tasks').select(),
+      _client.from('inbox_items').select(),
       _client.from('diary_entries').select(),
       _client.from('calendar_events').select(),
     ]);
     return RemoteSnapshot(
-      tasks: _rows(results[0]),
+      inboxItems: _rows(results[0]),
       diaryEntries: _rows(results[1]),
       calendarEvents: _rows(results[2]),
     );

@@ -120,7 +120,7 @@ class SyncService {
       final remoteSnapshot = await _remote.fetchSnapshot();
       await _database.applyRemoteSnapshot(
         _userId,
-        tasks: remoteSnapshot.tasks,
+        inboxItems: remoteSnapshot.inboxItems,
         diaryEntries: remoteSnapshot.diaryEntries,
         calendarEvents: remoteSnapshot.calendarEvents,
       );

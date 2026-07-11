@@ -3,12 +3,12 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
-class $LocalTasksTable extends LocalTasks
-    with TableInfo<$LocalTasksTable, LocalTask> {
+class $LocalInboxItemsTable extends LocalInboxItems
+    with TableInfo<$LocalInboxItemsTable, LocalInboxItem> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $LocalTasksTable(this.attachedDatabase, [this._alias]);
+  $LocalInboxItemsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
@@ -27,23 +27,16 @@ class $LocalTasksTable extends LocalTasks
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
   @override
-  late final GeneratedColumn<String> title = GeneratedColumn<String>(
-    'title',
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-  );
-  static const VerificationMeta _noteMeta = const VerificationMeta('note');
-  @override
-  late final GeneratedColumn<String> note = GeneratedColumn<String>(
-    'note',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
   );
   static const VerificationMeta _dueDateMeta = const VerificationMeta(
     'dueDate',
@@ -105,12 +98,12 @@ class $LocalTasksTable extends LocalTasks
     requiredDuringInsert: false,
     defaultValue: const Constant('pending'),
   );
-  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
-    'sortOrder',
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
   );
   @override
-  late final GeneratedColumn<double> sortOrder = GeneratedColumn<double>(
-    'sort_order',
+  late final GeneratedColumn<double> position = GeneratedColumn<double>(
+    'position',
     aliasedName,
     false,
     type: DriftSqlType.double,
@@ -199,14 +192,13 @@ class $LocalTasksTable extends LocalTasks
   List<GeneratedColumn> get $columns => [
     id,
     userId,
-    title,
-    note,
+    content,
     dueDate,
     priority,
     isCompleted,
     itemType,
     inboxColumn,
-    sortOrder,
+    position,
     isArchived,
     isPinned,
     isTopic,
@@ -218,10 +210,10 @@ class $LocalTasksTable extends LocalTasks
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'local_tasks';
+  static const String $name = 'local_inbox_items';
   @override
   VerificationContext validateIntegrity(
-    Insertable<LocalTask> instance, {
+    Insertable<LocalInboxItem> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -239,19 +231,13 @@ class $LocalTasksTable extends LocalTasks
     } else if (isInserting) {
       context.missing(_userIdMeta);
     }
-    if (data.containsKey('title')) {
+    if (data.containsKey('content')) {
       context.handle(
-        _titleMeta,
-        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
       );
     } else if (isInserting) {
-      context.missing(_titleMeta);
-    }
-    if (data.containsKey('note')) {
-      context.handle(
-        _noteMeta,
-        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
-      );
+      context.missing(_contentMeta);
     }
     if (data.containsKey('due_date')) {
       context.handle(
@@ -289,10 +275,10 @@ class $LocalTasksTable extends LocalTasks
         ),
       );
     }
-    if (data.containsKey('sort_order')) {
+    if (data.containsKey('position')) {
       context.handle(
-        _sortOrderMeta,
-        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
       );
     }
     if (data.containsKey('is_archived')) {
@@ -341,9 +327,9 @@ class $LocalTasksTable extends LocalTasks
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  LocalTask map(Map<String, dynamic> data, {String? tablePrefix}) {
+  LocalInboxItem map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return LocalTask(
+    return LocalInboxItem(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
@@ -352,14 +338,10 @@ class $LocalTasksTable extends LocalTasks
         DriftSqlType.string,
         data['${effectivePrefix}user_id'],
       )!,
-      title: attachedDatabase.typeMapping.read(
+      content: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}title'],
+        data['${effectivePrefix}content'],
       )!,
-      note: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}note'],
-      ),
       dueDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
@@ -380,9 +362,9 @@ class $LocalTasksTable extends LocalTasks
         DriftSqlType.string,
         data['${effectivePrefix}inbox_column'],
       )!,
-      sortOrder: attachedDatabase.typeMapping.read(
+      position: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
-        data['${effectivePrefix}sort_order'],
+        data['${effectivePrefix}position'],
       )!,
       isArchived: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -412,39 +394,37 @@ class $LocalTasksTable extends LocalTasks
   }
 
   @override
-  $LocalTasksTable createAlias(String alias) {
-    return $LocalTasksTable(attachedDatabase, alias);
+  $LocalInboxItemsTable createAlias(String alias) {
+    return $LocalInboxItemsTable(attachedDatabase, alias);
   }
 }
 
-class LocalTask extends DataClass implements Insertable<LocalTask> {
+class LocalInboxItem extends DataClass implements Insertable<LocalInboxItem> {
   final String id;
   final String userId;
-  final String title;
-  final String? note;
+  final String content;
   final DateTime? dueDate;
   final int? priority;
   final bool isCompleted;
   final String? itemType;
   final String inboxColumn;
-  final double sortOrder;
+  final double position;
   final bool isArchived;
   final bool isPinned;
   final bool isTopic;
   final String? parentId;
   final DateTime createdAt;
   final DateTime updatedAt;
-  const LocalTask({
+  const LocalInboxItem({
     required this.id,
     required this.userId,
-    required this.title,
-    this.note,
+    required this.content,
     this.dueDate,
     this.priority,
     required this.isCompleted,
     this.itemType,
     required this.inboxColumn,
-    required this.sortOrder,
+    required this.position,
     required this.isArchived,
     required this.isPinned,
     required this.isTopic,
@@ -457,10 +437,7 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['user_id'] = Variable<String>(userId);
-    map['title'] = Variable<String>(title);
-    if (!nullToAbsent || note != null) {
-      map['note'] = Variable<String>(note);
-    }
+    map['content'] = Variable<String>(content);
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
     }
@@ -472,7 +449,7 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       map['item_type'] = Variable<String>(itemType);
     }
     map['inbox_column'] = Variable<String>(inboxColumn);
-    map['sort_order'] = Variable<double>(sortOrder);
+    map['position'] = Variable<double>(position);
     map['is_archived'] = Variable<bool>(isArchived);
     map['is_pinned'] = Variable<bool>(isPinned);
     map['is_topic'] = Variable<bool>(isTopic);
@@ -484,12 +461,11 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     return map;
   }
 
-  LocalTasksCompanion toCompanion(bool nullToAbsent) {
-    return LocalTasksCompanion(
+  LocalInboxItemsCompanion toCompanion(bool nullToAbsent) {
+    return LocalInboxItemsCompanion(
       id: Value(id),
       userId: Value(userId),
-      title: Value(title),
-      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      content: Value(content),
       dueDate: dueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(dueDate),
@@ -501,7 +477,7 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
           ? const Value.absent()
           : Value(itemType),
       inboxColumn: Value(inboxColumn),
-      sortOrder: Value(sortOrder),
+      position: Value(position),
       isArchived: Value(isArchived),
       isPinned: Value(isPinned),
       isTopic: Value(isTopic),
@@ -513,22 +489,21 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     );
   }
 
-  factory LocalTask.fromJson(
+  factory LocalInboxItem.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return LocalTask(
+    return LocalInboxItem(
       id: serializer.fromJson<String>(json['id']),
       userId: serializer.fromJson<String>(json['userId']),
-      title: serializer.fromJson<String>(json['title']),
-      note: serializer.fromJson<String?>(json['note']),
+      content: serializer.fromJson<String>(json['content']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
       priority: serializer.fromJson<int?>(json['priority']),
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       itemType: serializer.fromJson<String?>(json['itemType']),
       inboxColumn: serializer.fromJson<String>(json['inboxColumn']),
-      sortOrder: serializer.fromJson<double>(json['sortOrder']),
+      position: serializer.fromJson<double>(json['position']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
       isPinned: serializer.fromJson<bool>(json['isPinned']),
       isTopic: serializer.fromJson<bool>(json['isTopic']),
@@ -543,14 +518,13 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'userId': serializer.toJson<String>(userId),
-      'title': serializer.toJson<String>(title),
-      'note': serializer.toJson<String?>(note),
+      'content': serializer.toJson<String>(content),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
       'priority': serializer.toJson<int?>(priority),
       'isCompleted': serializer.toJson<bool>(isCompleted),
       'itemType': serializer.toJson<String?>(itemType),
       'inboxColumn': serializer.toJson<String>(inboxColumn),
-      'sortOrder': serializer.toJson<double>(sortOrder),
+      'position': serializer.toJson<double>(position),
       'isArchived': serializer.toJson<bool>(isArchived),
       'isPinned': serializer.toJson<bool>(isPinned),
       'isTopic': serializer.toJson<bool>(isTopic),
@@ -560,34 +534,32 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     };
   }
 
-  LocalTask copyWith({
+  LocalInboxItem copyWith({
     String? id,
     String? userId,
-    String? title,
-    Value<String?> note = const Value.absent(),
+    String? content,
     Value<DateTime?> dueDate = const Value.absent(),
     Value<int?> priority = const Value.absent(),
     bool? isCompleted,
     Value<String?> itemType = const Value.absent(),
     String? inboxColumn,
-    double? sortOrder,
+    double? position,
     bool? isArchived,
     bool? isPinned,
     bool? isTopic,
     Value<String?> parentId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) => LocalTask(
+  }) => LocalInboxItem(
     id: id ?? this.id,
     userId: userId ?? this.userId,
-    title: title ?? this.title,
-    note: note.present ? note.value : this.note,
+    content: content ?? this.content,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
     priority: priority.present ? priority.value : this.priority,
     isCompleted: isCompleted ?? this.isCompleted,
     itemType: itemType.present ? itemType.value : this.itemType,
     inboxColumn: inboxColumn ?? this.inboxColumn,
-    sortOrder: sortOrder ?? this.sortOrder,
+    position: position ?? this.position,
     isArchived: isArchived ?? this.isArchived,
     isPinned: isPinned ?? this.isPinned,
     isTopic: isTopic ?? this.isTopic,
@@ -595,12 +567,11 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
-  LocalTask copyWithCompanion(LocalTasksCompanion data) {
-    return LocalTask(
+  LocalInboxItem copyWithCompanion(LocalInboxItemsCompanion data) {
+    return LocalInboxItem(
       id: data.id.present ? data.id.value : this.id,
       userId: data.userId.present ? data.userId.value : this.userId,
-      title: data.title.present ? data.title.value : this.title,
-      note: data.note.present ? data.note.value : this.note,
+      content: data.content.present ? data.content.value : this.content,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
       priority: data.priority.present ? data.priority.value : this.priority,
       isCompleted: data.isCompleted.present
@@ -610,7 +581,7 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       inboxColumn: data.inboxColumn.present
           ? data.inboxColumn.value
           : this.inboxColumn,
-      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      position: data.position.present ? data.position.value : this.position,
       isArchived: data.isArchived.present
           ? data.isArchived.value
           : this.isArchived,
@@ -624,17 +595,16 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
 
   @override
   String toString() {
-    return (StringBuffer('LocalTask(')
+    return (StringBuffer('LocalInboxItem(')
           ..write('id: $id, ')
           ..write('userId: $userId, ')
-          ..write('title: $title, ')
-          ..write('note: $note, ')
+          ..write('content: $content, ')
           ..write('dueDate: $dueDate, ')
           ..write('priority: $priority, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('itemType: $itemType, ')
           ..write('inboxColumn: $inboxColumn, ')
-          ..write('sortOrder: $sortOrder, ')
+          ..write('position: $position, ')
           ..write('isArchived: $isArchived, ')
           ..write('isPinned: $isPinned, ')
           ..write('isTopic: $isTopic, ')
@@ -649,14 +619,13 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
   int get hashCode => Object.hash(
     id,
     userId,
-    title,
-    note,
+    content,
     dueDate,
     priority,
     isCompleted,
     itemType,
     inboxColumn,
-    sortOrder,
+    position,
     isArchived,
     isPinned,
     isTopic,
@@ -667,17 +636,16 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is LocalTask &&
+      (other is LocalInboxItem &&
           other.id == this.id &&
           other.userId == this.userId &&
-          other.title == this.title &&
-          other.note == this.note &&
+          other.content == this.content &&
           other.dueDate == this.dueDate &&
           other.priority == this.priority &&
           other.isCompleted == this.isCompleted &&
           other.itemType == this.itemType &&
           other.inboxColumn == this.inboxColumn &&
-          other.sortOrder == this.sortOrder &&
+          other.position == this.position &&
           other.isArchived == this.isArchived &&
           other.isPinned == this.isPinned &&
           other.isTopic == this.isTopic &&
@@ -686,17 +654,16 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
           other.updatedAt == this.updatedAt);
 }
 
-class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
+class LocalInboxItemsCompanion extends UpdateCompanion<LocalInboxItem> {
   final Value<String> id;
   final Value<String> userId;
-  final Value<String> title;
-  final Value<String?> note;
+  final Value<String> content;
   final Value<DateTime?> dueDate;
   final Value<int?> priority;
   final Value<bool> isCompleted;
   final Value<String?> itemType;
   final Value<String> inboxColumn;
-  final Value<double> sortOrder;
+  final Value<double> position;
   final Value<bool> isArchived;
   final Value<bool> isPinned;
   final Value<bool> isTopic;
@@ -704,17 +671,16 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
-  const LocalTasksCompanion({
+  const LocalInboxItemsCompanion({
     this.id = const Value.absent(),
     this.userId = const Value.absent(),
-    this.title = const Value.absent(),
-    this.note = const Value.absent(),
+    this.content = const Value.absent(),
     this.dueDate = const Value.absent(),
     this.priority = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.itemType = const Value.absent(),
     this.inboxColumn = const Value.absent(),
-    this.sortOrder = const Value.absent(),
+    this.position = const Value.absent(),
     this.isArchived = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.isTopic = const Value.absent(),
@@ -723,17 +689,16 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  LocalTasksCompanion.insert({
+  LocalInboxItemsCompanion.insert({
     required String id,
     required String userId,
-    required String title,
-    this.note = const Value.absent(),
+    required String content,
     this.dueDate = const Value.absent(),
     this.priority = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.itemType = const Value.absent(),
     this.inboxColumn = const Value.absent(),
-    this.sortOrder = const Value.absent(),
+    this.position = const Value.absent(),
     this.isArchived = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.isTopic = const Value.absent(),
@@ -743,20 +708,19 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        userId = Value(userId),
-       title = Value(title),
+       content = Value(content),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
-  static Insertable<LocalTask> custom({
+  static Insertable<LocalInboxItem> custom({
     Expression<String>? id,
     Expression<String>? userId,
-    Expression<String>? title,
-    Expression<String>? note,
+    Expression<String>? content,
     Expression<DateTime>? dueDate,
     Expression<int>? priority,
     Expression<bool>? isCompleted,
     Expression<String>? itemType,
     Expression<String>? inboxColumn,
-    Expression<double>? sortOrder,
+    Expression<double>? position,
     Expression<bool>? isArchived,
     Expression<bool>? isPinned,
     Expression<bool>? isTopic,
@@ -768,14 +732,13 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (userId != null) 'user_id': userId,
-      if (title != null) 'title': title,
-      if (note != null) 'note': note,
+      if (content != null) 'content': content,
       if (dueDate != null) 'due_date': dueDate,
       if (priority != null) 'priority': priority,
       if (isCompleted != null) 'is_completed': isCompleted,
       if (itemType != null) 'item_type': itemType,
       if (inboxColumn != null) 'inbox_column': inboxColumn,
-      if (sortOrder != null) 'sort_order': sortOrder,
+      if (position != null) 'position': position,
       if (isArchived != null) 'is_archived': isArchived,
       if (isPinned != null) 'is_pinned': isPinned,
       if (isTopic != null) 'is_topic': isTopic,
@@ -786,17 +749,16 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     });
   }
 
-  LocalTasksCompanion copyWith({
+  LocalInboxItemsCompanion copyWith({
     Value<String>? id,
     Value<String>? userId,
-    Value<String>? title,
-    Value<String?>? note,
+    Value<String>? content,
     Value<DateTime?>? dueDate,
     Value<int?>? priority,
     Value<bool>? isCompleted,
     Value<String?>? itemType,
     Value<String>? inboxColumn,
-    Value<double>? sortOrder,
+    Value<double>? position,
     Value<bool>? isArchived,
     Value<bool>? isPinned,
     Value<bool>? isTopic,
@@ -805,17 +767,16 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
-    return LocalTasksCompanion(
+    return LocalInboxItemsCompanion(
       id: id ?? this.id,
       userId: userId ?? this.userId,
-      title: title ?? this.title,
-      note: note ?? this.note,
+      content: content ?? this.content,
       dueDate: dueDate ?? this.dueDate,
       priority: priority ?? this.priority,
       isCompleted: isCompleted ?? this.isCompleted,
       itemType: itemType ?? this.itemType,
       inboxColumn: inboxColumn ?? this.inboxColumn,
-      sortOrder: sortOrder ?? this.sortOrder,
+      position: position ?? this.position,
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
       isTopic: isTopic ?? this.isTopic,
@@ -835,11 +796,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
     }
-    if (title.present) {
-      map['title'] = Variable<String>(title.value);
-    }
-    if (note.present) {
-      map['note'] = Variable<String>(note.value);
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
     }
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
@@ -856,8 +814,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     if (inboxColumn.present) {
       map['inbox_column'] = Variable<String>(inboxColumn.value);
     }
-    if (sortOrder.present) {
-      map['sort_order'] = Variable<double>(sortOrder.value);
+    if (position.present) {
+      map['position'] = Variable<double>(position.value);
     }
     if (isArchived.present) {
       map['is_archived'] = Variable<bool>(isArchived.value);
@@ -885,17 +843,16 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
 
   @override
   String toString() {
-    return (StringBuffer('LocalTasksCompanion(')
+    return (StringBuffer('LocalInboxItemsCompanion(')
           ..write('id: $id, ')
           ..write('userId: $userId, ')
-          ..write('title: $title, ')
-          ..write('note: $note, ')
+          ..write('content: $content, ')
           ..write('dueDate: $dueDate, ')
           ..write('priority: $priority, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('itemType: $itemType, ')
           ..write('inboxColumn: $inboxColumn, ')
-          ..write('sortOrder: $sortOrder, ')
+          ..write('position: $position, ')
           ..write('isArchived: $isArchived, ')
           ..write('isPinned: $isPinned, ')
           ..write('isTopic: $isTopic, ')
@@ -2604,7 +2561,9 @@ class PendingSyncOperationsCompanion
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
-  late final $LocalTasksTable localTasks = $LocalTasksTable(this);
+  late final $LocalInboxItemsTable localInboxItems = $LocalInboxItemsTable(
+    this,
+  );
   late final $LocalDiaryEntriesTable localDiaryEntries =
       $LocalDiaryEntriesTable(this);
   late final $LocalCalendarEventsTable localCalendarEvents =
@@ -2616,25 +2575,24 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
-    localTasks,
+    localInboxItems,
     localDiaryEntries,
     localCalendarEvents,
     pendingSyncOperations,
   ];
 }
 
-typedef $$LocalTasksTableCreateCompanionBuilder =
-    LocalTasksCompanion Function({
+typedef $$LocalInboxItemsTableCreateCompanionBuilder =
+    LocalInboxItemsCompanion Function({
       required String id,
       required String userId,
-      required String title,
-      Value<String?> note,
+      required String content,
       Value<DateTime?> dueDate,
       Value<int?> priority,
       Value<bool> isCompleted,
       Value<String?> itemType,
       Value<String> inboxColumn,
-      Value<double> sortOrder,
+      Value<double> position,
       Value<bool> isArchived,
       Value<bool> isPinned,
       Value<bool> isTopic,
@@ -2643,18 +2601,17 @@ typedef $$LocalTasksTableCreateCompanionBuilder =
       required DateTime updatedAt,
       Value<int> rowid,
     });
-typedef $$LocalTasksTableUpdateCompanionBuilder =
-    LocalTasksCompanion Function({
+typedef $$LocalInboxItemsTableUpdateCompanionBuilder =
+    LocalInboxItemsCompanion Function({
       Value<String> id,
       Value<String> userId,
-      Value<String> title,
-      Value<String?> note,
+      Value<String> content,
       Value<DateTime?> dueDate,
       Value<int?> priority,
       Value<bool> isCompleted,
       Value<String?> itemType,
       Value<String> inboxColumn,
-      Value<double> sortOrder,
+      Value<double> position,
       Value<bool> isArchived,
       Value<bool> isPinned,
       Value<bool> isTopic,
@@ -2664,9 +2621,9 @@ typedef $$LocalTasksTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
-class $$LocalTasksTableFilterComposer
-    extends Composer<_$AppDatabase, $LocalTasksTable> {
-  $$LocalTasksTableFilterComposer({
+class $$LocalInboxItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalInboxItemsTable> {
+  $$LocalInboxItemsTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2683,13 +2640,8 @@ class $$LocalTasksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get title => $composableBuilder(
-    column: $table.title,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get note => $composableBuilder(
-    column: $table.note,
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2718,8 +2670,8 @@ class $$LocalTasksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<double> get sortOrder => $composableBuilder(
-    column: $table.sortOrder,
+  ColumnFilters<double> get position => $composableBuilder(
+    column: $table.position,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2754,9 +2706,9 @@ class $$LocalTasksTableFilterComposer
   );
 }
 
-class $$LocalTasksTableOrderingComposer
-    extends Composer<_$AppDatabase, $LocalTasksTable> {
-  $$LocalTasksTableOrderingComposer({
+class $$LocalInboxItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalInboxItemsTable> {
+  $$LocalInboxItemsTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2773,13 +2725,8 @@ class $$LocalTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get title => $composableBuilder(
-    column: $table.title,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get note => $composableBuilder(
-    column: $table.note,
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2808,8 +2755,8 @@ class $$LocalTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<double> get sortOrder => $composableBuilder(
-    column: $table.sortOrder,
+  ColumnOrderings<double> get position => $composableBuilder(
+    column: $table.position,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2844,9 +2791,9 @@ class $$LocalTasksTableOrderingComposer
   );
 }
 
-class $$LocalTasksTableAnnotationComposer
-    extends Composer<_$AppDatabase, $LocalTasksTable> {
-  $$LocalTasksTableAnnotationComposer({
+class $$LocalInboxItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalInboxItemsTable> {
+  $$LocalInboxItemsTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2859,11 +2806,8 @@ class $$LocalTasksTableAnnotationComposer
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
 
-  GeneratedColumn<String> get title =>
-      $composableBuilder(column: $table.title, builder: (column) => column);
-
-  GeneratedColumn<String> get note =>
-      $composableBuilder(column: $table.note, builder: (column) => column);
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
@@ -2884,8 +2828,8 @@ class $$LocalTasksTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<double> get sortOrder =>
-      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+  GeneratedColumn<double> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
 
   GeneratedColumn<bool> get isArchived => $composableBuilder(
     column: $table.isArchived,
@@ -2908,47 +2852,52 @@ class $$LocalTasksTableAnnotationComposer
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
-class $$LocalTasksTableTableManager
+class $$LocalInboxItemsTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $LocalTasksTable,
-          LocalTask,
-          $$LocalTasksTableFilterComposer,
-          $$LocalTasksTableOrderingComposer,
-          $$LocalTasksTableAnnotationComposer,
-          $$LocalTasksTableCreateCompanionBuilder,
-          $$LocalTasksTableUpdateCompanionBuilder,
+          $LocalInboxItemsTable,
+          LocalInboxItem,
+          $$LocalInboxItemsTableFilterComposer,
+          $$LocalInboxItemsTableOrderingComposer,
+          $$LocalInboxItemsTableAnnotationComposer,
+          $$LocalInboxItemsTableCreateCompanionBuilder,
+          $$LocalInboxItemsTableUpdateCompanionBuilder,
           (
-            LocalTask,
-            BaseReferences<_$AppDatabase, $LocalTasksTable, LocalTask>,
+            LocalInboxItem,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalInboxItemsTable,
+              LocalInboxItem
+            >,
           ),
-          LocalTask,
+          LocalInboxItem,
           PrefetchHooks Function()
         > {
-  $$LocalTasksTableTableManager(_$AppDatabase db, $LocalTasksTable table)
-    : super(
+  $$LocalInboxItemsTableTableManager(
+    _$AppDatabase db,
+    $LocalInboxItemsTable table,
+  ) : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$LocalTasksTableFilterComposer($db: db, $table: table),
+              $$LocalInboxItemsTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$LocalTasksTableOrderingComposer($db: db, $table: table),
+              $$LocalInboxItemsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$LocalTasksTableAnnotationComposer($db: db, $table: table),
+              $$LocalInboxItemsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> userId = const Value.absent(),
-                Value<String> title = const Value.absent(),
-                Value<String?> note = const Value.absent(),
+                Value<String> content = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<int?> priority = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<String?> itemType = const Value.absent(),
                 Value<String> inboxColumn = const Value.absent(),
-                Value<double> sortOrder = const Value.absent(),
+                Value<double> position = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<bool> isTopic = const Value.absent(),
@@ -2956,17 +2905,16 @@ class $$LocalTasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => LocalTasksCompanion(
+              }) => LocalInboxItemsCompanion(
                 id: id,
                 userId: userId,
-                title: title,
-                note: note,
+                content: content,
                 dueDate: dueDate,
                 priority: priority,
                 isCompleted: isCompleted,
                 itemType: itemType,
                 inboxColumn: inboxColumn,
-                sortOrder: sortOrder,
+                position: position,
                 isArchived: isArchived,
                 isPinned: isPinned,
                 isTopic: isTopic,
@@ -2979,14 +2927,13 @@ class $$LocalTasksTableTableManager
               ({
                 required String id,
                 required String userId,
-                required String title,
-                Value<String?> note = const Value.absent(),
+                required String content,
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<int?> priority = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<String?> itemType = const Value.absent(),
                 Value<String> inboxColumn = const Value.absent(),
-                Value<double> sortOrder = const Value.absent(),
+                Value<double> position = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<bool> isTopic = const Value.absent(),
@@ -2994,17 +2941,16 @@ class $$LocalTasksTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
-              }) => LocalTasksCompanion.insert(
+              }) => LocalInboxItemsCompanion.insert(
                 id: id,
                 userId: userId,
-                title: title,
-                note: note,
+                content: content,
                 dueDate: dueDate,
                 priority: priority,
                 isCompleted: isCompleted,
                 itemType: itemType,
                 inboxColumn: inboxColumn,
-                sortOrder: sortOrder,
+                position: position,
                 isArchived: isArchived,
                 isPinned: isPinned,
                 isTopic: isTopic,
@@ -3021,18 +2967,21 @@ class $$LocalTasksTableTableManager
       );
 }
 
-typedef $$LocalTasksTableProcessedTableManager =
+typedef $$LocalInboxItemsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $LocalTasksTable,
-      LocalTask,
-      $$LocalTasksTableFilterComposer,
-      $$LocalTasksTableOrderingComposer,
-      $$LocalTasksTableAnnotationComposer,
-      $$LocalTasksTableCreateCompanionBuilder,
-      $$LocalTasksTableUpdateCompanionBuilder,
-      (LocalTask, BaseReferences<_$AppDatabase, $LocalTasksTable, LocalTask>),
-      LocalTask,
+      $LocalInboxItemsTable,
+      LocalInboxItem,
+      $$LocalInboxItemsTableFilterComposer,
+      $$LocalInboxItemsTableOrderingComposer,
+      $$LocalInboxItemsTableAnnotationComposer,
+      $$LocalInboxItemsTableCreateCompanionBuilder,
+      $$LocalInboxItemsTableUpdateCompanionBuilder,
+      (
+        LocalInboxItem,
+        BaseReferences<_$AppDatabase, $LocalInboxItemsTable, LocalInboxItem>,
+      ),
+      LocalInboxItem,
       PrefetchHooks Function()
     >;
 typedef $$LocalDiaryEntriesTableCreateCompanionBuilder =
@@ -3921,8 +3870,8 @@ typedef $$PendingSyncOperationsTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
-  $$LocalTasksTableTableManager get localTasks =>
-      $$LocalTasksTableTableManager(_db, _db.localTasks);
+  $$LocalInboxItemsTableTableManager get localInboxItems =>
+      $$LocalInboxItemsTableTableManager(_db, _db.localInboxItems);
   $$LocalDiaryEntriesTableTableManager get localDiaryEntries =>
       $$LocalDiaryEntriesTableTableManager(_db, _db.localDiaryEntries);
   $$LocalCalendarEventsTableTableManager get localCalendarEvents =>

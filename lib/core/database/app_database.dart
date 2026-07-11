@@ -5,17 +5,16 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 part 'app_database.g.dart';
 
-class LocalTasks extends Table {
+class LocalInboxItems extends Table {
   TextColumn get id => text()();
   TextColumn get userId => text()();
-  TextColumn get title => text()();
-  TextColumn get note => text().nullable()();
+  TextColumn get content => text()();
   DateTimeColumn get dueDate => dateTime().nullable()();
   IntColumn get priority => integer().nullable()();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
   TextColumn get itemType => text().nullable()();
   TextColumn get inboxColumn => text().withDefault(const Constant('pending'))();
-  RealColumn get sortOrder => real().withDefault(const Constant(0))();
+  RealColumn get position => real().withDefault(const Constant(0))();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
   BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
   BoolColumn get isTopic => boolean().withDefault(const Constant(false))();
@@ -72,8 +71,8 @@ class PendingSyncOperations extends Table {
   Set<Column<Object>> get primaryKey => {key};
 }
 
-class TaskMutation {
-  const TaskMutation(this.id, this.values);
+class InboxItemMutation {
+  const InboxItemMutation(this.id, this.values);
 
   final String id;
   final Map<String, dynamic> values;
@@ -81,7 +80,7 @@ class TaskMutation {
 
 @DriftDatabase(
   tables: [
-    LocalTasks,
+    LocalInboxItems,
     LocalDiaryEntries,
     LocalCalendarEvents,
     PendingSyncOperations,
@@ -93,7 +92,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -106,24 +105,31 @@ class AppDatabase extends _$AppDatabase {
         await migrator.deleteTable('local_calendar_events');
         await migrator.createTable(localCalendarEvents);
       }
+      if (from < 3) {
+        await customStatement(
+          "DELETE FROM pending_sync_operations WHERE entity_type = 'tasks' OR entity_type = 'inbox_items'",
+        );
+        await migrator.deleteTable('local_tasks');
+        await migrator.createTable(localInboxItems);
+      }
     },
   );
 
-  Stream<List<LocalTask>> watchTasks(String userId) {
-    final query = select(localTasks)
+  Stream<List<LocalInboxItem>> watchInboxItems(String userId) {
+    final query = select(localInboxItems)
       ..where((table) => table.userId.equals(userId))
       ..orderBy([
-        (table) => OrderingTerm(expression: table.sortOrder),
+        (table) => OrderingTerm(expression: table.position),
         (table) => OrderingTerm.desc(table.createdAt),
       ]);
     return query.watch();
   }
 
-  Future<List<LocalTask>> listTasks(String userId) {
-    final query = select(localTasks)
+  Future<List<LocalInboxItem>> listInboxItems(String userId) {
+    final query = select(localInboxItems)
       ..where((table) => table.userId.equals(userId))
       ..orderBy([
-        (table) => OrderingTerm(expression: table.sortOrder),
+        (table) => OrderingTerm(expression: table.position),
         (table) => OrderingTerm.desc(table.createdAt),
       ]);
     return query.get();
@@ -163,45 +169,52 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
-  Future<void> saveTask(Map<String, dynamic> payload) async {
+  Future<void> saveInboxItem(Map<String, dynamic> payload) async {
     await transaction(() async {
-      final existing = await _findTask(payload['id'] as String);
+      final existing = await _findInboxItem(payload['id'] as String);
       final normalized = <String, dynamic>{
         ...payload,
         if (existing != null)
           'created_at': existing.createdAt.toUtc().toIso8601String(),
       };
-      await into(localTasks).insertOnConflictUpdate(_taskCompanion(normalized));
-      await _enqueueUpsert('tasks', normalized);
+      await into(
+        localInboxItems,
+      ).insertOnConflictUpdate(_inboxItemCompanion(normalized));
+      await _enqueueUpsert('inbox_items', normalized);
     });
   }
 
-  Future<void> updateTasks(String userId, List<TaskMutation> mutations) async {
+  Future<void> updateInboxItems(
+    String userId,
+    List<InboxItemMutation> mutations,
+  ) async {
     if (mutations.isEmpty) {
       return;
     }
     await transaction(() async {
       final now = DateTime.now().toUtc().toIso8601String();
       for (final mutation in mutations) {
-        final existing = await _findTask(mutation.id);
+        final existing = await _findInboxItem(mutation.id);
         if (existing == null || existing.userId != userId) {
           continue;
         }
         final payload = <String, dynamic>{
-          ...localTaskToRemoteMap(existing),
+          ...localInboxItemToRemoteMap(existing),
           ...mutation.values,
           'updated_at': now,
         };
-        await into(localTasks).insertOnConflictUpdate(_taskCompanion(payload));
-        await _enqueueUpsert('tasks', payload);
+        await into(
+          localInboxItems,
+        ).insertOnConflictUpdate(_inboxItemCompanion(payload));
+        await _enqueueUpsert('inbox_items', payload);
       }
     });
   }
 
-  Future<void> deleteTask(String userId, String id) async {
+  Future<void> deleteInboxItem(String userId, String id) async {
     await transaction(() async {
       final children =
-          await (select(localTasks)..where(
+          await (select(localInboxItems)..where(
                 (table) =>
                     table.userId.equals(userId) & table.parentId.equals(id),
               ))
@@ -209,18 +222,20 @@ class AppDatabase extends _$AppDatabase {
       final now = DateTime.now().toUtc().toIso8601String();
       for (final child in children) {
         final payload = <String, dynamic>{
-          ...localTaskToRemoteMap(child),
+          ...localInboxItemToRemoteMap(child),
           'parent_id': null,
           'updated_at': now,
         };
-        await into(localTasks).insertOnConflictUpdate(_taskCompanion(payload));
-        await _enqueueUpsert('tasks', payload);
+        await into(
+          localInboxItems,
+        ).insertOnConflictUpdate(_inboxItemCompanion(payload));
+        await _enqueueUpsert('inbox_items', payload);
       }
-      await (delete(localTasks)..where(
+      await (delete(localInboxItems)..where(
             (table) => table.id.equals(id) & table.userId.equals(userId),
           ))
           .go();
-      await _enqueueDelete(userId, 'tasks', id);
+      await _enqueueDelete(userId, 'inbox_items', id);
     });
   }
 
@@ -317,35 +332,37 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> applyRemoteSnapshot(
     String userId, {
-    required List<Map<String, dynamic>> tasks,
+    required List<Map<String, dynamic>> inboxItems,
     required List<Map<String, dynamic>> diaryEntries,
     required List<Map<String, dynamic>> calendarEvents,
   }) async {
     await transaction(() async {
-      await _replaceRemoteTasks(userId, tasks);
+      await _replaceRemoteInboxItems(userId, inboxItems);
       await _replaceRemoteDiaryEntries(userId, diaryEntries);
       await _replaceRemoteCalendarEvents(userId, calendarEvents);
     });
   }
 
-  Future<void> _replaceRemoteTasks(
+  Future<void> _replaceRemoteInboxItems(
     String userId,
     List<Map<String, dynamic>> rows,
   ) async {
-    final pendingIds = await _pendingEntityIds(userId, 'tasks');
+    final pendingIds = await _pendingEntityIds(userId, 'inbox_items');
     final remoteIds = rows.map((row) => row['id'] as String).toSet();
     for (final row in rows) {
       if (!pendingIds.contains(row['id'])) {
-        await into(localTasks).insertOnConflictUpdate(_taskCompanion(row));
+        await into(
+          localInboxItems,
+        ).insertOnConflictUpdate(_inboxItemCompanion(row));
       }
     }
     final localRows = await (select(
-      localTasks,
+      localInboxItems,
     )..where((table) => table.userId.equals(userId))).get();
     for (final row in localRows) {
       if (!remoteIds.contains(row.id) && !pendingIds.contains(row.id)) {
         await (delete(
-          localTasks,
+          localInboxItems,
         )..where((table) => table.id.equals(row.id))).go();
       }
     }
@@ -413,9 +430,9 @@ class AppDatabase extends _$AppDatabase {
     return (await query.get()).map((row) => row.entityId).toSet();
   }
 
-  Future<LocalTask?> _findTask(String id) {
+  Future<LocalInboxItem?> _findInboxItem(String id) {
     return (select(
-      localTasks,
+      localInboxItems,
     )..where((table) => table.id.equals(id))).getSingleOrNull();
   }
 
@@ -470,18 +487,17 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-Map<String, dynamic> localTaskToRemoteMap(LocalTask row) {
+Map<String, dynamic> localInboxItemToRemoteMap(LocalInboxItem row) {
   return {
     'id': row.id,
     'user_id': row.userId,
-    'title': row.title,
-    'note': row.note,
+    'content': row.content,
     'due_date': row.dueDate?.toIso8601String().split('T').first,
     'priority': row.priority,
     'is_completed': row.isCompleted,
     'item_type': row.itemType,
     'inbox_column': row.inboxColumn,
-    'sort_order': row.sortOrder,
+    'position': row.position,
     'is_archived': row.isArchived,
     'is_pinned': row.isPinned,
     'is_topic': row.isTopic,
@@ -519,18 +535,17 @@ Map<String, dynamic> localCalendarEventToRemoteMap(LocalCalendarEvent row) {
   };
 }
 
-LocalTasksCompanion _taskCompanion(Map<String, dynamic> map) {
-  return LocalTasksCompanion.insert(
+LocalInboxItemsCompanion _inboxItemCompanion(Map<String, dynamic> map) {
+  return LocalInboxItemsCompanion.insert(
     id: map['id'] as String,
     userId: map['user_id'] as String,
-    title: map['title'] as String,
-    note: Value(map['note'] as String?),
+    content: map['content'] as String,
     dueDate: Value(_parseDateTime(map['due_date'])),
     priority: Value(map['priority'] as int?),
     isCompleted: Value(map['is_completed'] as bool? ?? false),
     itemType: Value(map['item_type'] as String?),
     inboxColumn: Value(map['inbox_column'] as String? ?? 'pending'),
-    sortOrder: Value((map['sort_order'] as num?)?.toDouble() ?? 0),
+    position: Value((map['position'] as num?)?.toDouble() ?? 0),
     isArchived: Value(map['is_archived'] as bool? ?? false),
     isPinned: Value(map['is_pinned'] as bool? ?? false),
     isTopic: Value(map['is_topic'] as bool? ?? false),

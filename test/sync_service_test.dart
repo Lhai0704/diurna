@@ -30,7 +30,7 @@ void main() {
 
     await service.syncNow();
 
-    expect(remote.tasks.values.single['title'], '后台上传');
+    expect(remote.inboxItems.values.single['content'], '后台上传');
     expect(await database.pendingCount('user-1'), 0);
     expect(service.snapshot.phase, SyncPhase.idle);
     await service.dispose();
@@ -53,23 +53,22 @@ void main() {
     await service.syncNow();
     expect(service.snapshot.phase, SyncPhase.idle);
     expect(await database.pendingCount('user-1'), 0);
-    expect(remote.tasks.values.single['title'], '断网后重试');
+    expect(remote.inboxItems.values.single['content'], '断网后重试');
     await service.dispose();
   });
 
   test('pulls an existing remote snapshot into the local database', () async {
     final now = DateTime.utc(2026, 7, 11).toIso8601String();
-    remote.tasks['remote-1'] = {
+    remote.inboxItems['remote-1'] = {
       'id': 'remote-1',
       'user_id': 'user-1',
-      'title': '来自其他设备',
-      'note': null,
+      'content': '来自其他设备',
       'due_date': null,
       'priority': null,
       'is_completed': false,
       'item_type': null,
       'inbox_column': 'pending',
-      'sort_order': 0.0,
+      'position': 0.0,
       'is_archived': false,
       'is_pinned': false,
       'is_topic': false,
@@ -93,7 +92,7 @@ void main() {
 }
 
 class _FakeRemoteDataSource implements SyncRemoteDataSource {
-  final Map<String, Map<String, dynamic>> tasks = {};
+  final Map<String, Map<String, dynamic>> inboxItems = {};
   final Map<String, Map<String, dynamic>> diaryEntries = {};
   final Map<String, Map<String, dynamic>> calendarEvents = {};
   bool failRequests = false;
@@ -114,7 +113,7 @@ class _FakeRemoteDataSource implements SyncRemoteDataSource {
   Future<RemoteSnapshot> fetchSnapshot() async {
     _throwIfFailed();
     return RemoteSnapshot(
-      tasks: tasks.values.map(Map<String, dynamic>.from).toList(),
+      inboxItems: inboxItems.values.map(Map<String, dynamic>.from).toList(),
       diaryEntries: diaryEntries.values.map(Map<String, dynamic>.from).toList(),
       calendarEvents: calendarEvents.values
           .map(Map<String, dynamic>.from)
@@ -124,7 +123,7 @@ class _FakeRemoteDataSource implements SyncRemoteDataSource {
 
   Map<String, Map<String, dynamic>> _table(String table) {
     return switch (table) {
-      'tasks' => tasks,
+      'inbox_items' => inboxItems,
       'diary_entries' => diaryEntries,
       'calendar_events' => calendarEvents,
       _ => throw ArgumentError.value(table, 'table'),

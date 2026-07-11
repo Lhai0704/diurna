@@ -98,8 +98,9 @@ class _AuthFormState extends ConsumerState<AuthForm> {
                     controller: _emailController,
                     label: '邮箱',
                     keyboardType: TextInputType.emailAddress,
-                    validator: (value) =>
-                        value == null || !value.contains('@') ? '请输入有效邮箱' : null,
+                    validator: (value) => value == null || !value.contains('@')
+                        ? '请输入有效邮箱'
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   AppTextField(
@@ -111,8 +112,9 @@ class _AuthFormState extends ConsumerState<AuthForm> {
                   ),
                   const SizedBox(height: 20),
                   FilledButton(
-                    onPressed:
-                        _submitting || !authRepository.isConfigured ? null : _submit,
+                    onPressed: _submitting || !authRepository.isConfigured
+                        ? null
+                        : _submit,
                     child: _submitting
                         ? const SizedBox.square(
                             dimension: 18,
@@ -121,7 +123,8 @@ class _AuthFormState extends ConsumerState<AuthForm> {
                         : Text(isLogin ? '登录' : '注册'),
                   ),
                   TextButton(
-                    onPressed: () => context.go(isLogin ? '/register' : '/login'),
+                    onPressed: () =>
+                        context.go(isLogin ? '/register' : '/login'),
                     child: Text(isLogin ? '没有账号？注册' : '已有账号？登录'),
                   ),
                 ],

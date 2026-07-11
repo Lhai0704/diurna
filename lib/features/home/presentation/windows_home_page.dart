@@ -30,7 +30,7 @@ class WindowsHomePage extends ConsumerWidget {
                 children: [
                   Expanded(child: _DiaryPanel()),
                   Divider(height: 1),
-                  Expanded(child: _TaskPanel()),
+                  Expanded(child: _InboxPanel()),
                 ],
               ),
             ),
@@ -495,8 +495,8 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
   }
 }
 
-class _TaskPanel extends StatelessWidget {
-  const _TaskPanel();
+class _InboxPanel extends StatelessWidget {
+  const _InboxPanel();
 
   @override
   Widget build(BuildContext context) {

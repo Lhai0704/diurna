@@ -16,7 +16,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authRepository = ref.watch(authRepositoryProvider);
 
   return GoRouter(
-    initialLocation: '/tasks',
+    initialLocation: '/inbox',
     refreshListenable: GoRouterRefreshStream(authRepository.authStateChanges),
     redirect: (context, state) {
       final loggedIn = authRepository.currentUser != null;
@@ -28,7 +28,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
       if (loggedIn && authRoute) {
-        return '/tasks';
+        return '/inbox';
       }
       return null;
     },
@@ -45,7 +45,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/tasks',
+                path: '/inbox',
                 builder: (context, state) => const InboxPage(),
               ),
             ],

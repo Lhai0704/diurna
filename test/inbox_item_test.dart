@@ -7,10 +7,10 @@ void main() {
       final item = InboxItem.fromMap({
         'id': 'item-1',
         'user_id': 'user-1',
-        'title': '记录一个想法',
+        'content': '记录一个想法',
         'item_type': null,
         'inbox_column': 'pending',
-        'sort_order': -1,
+        'position': -1,
         'is_archived': false,
         'is_pinned': false,
         'is_topic': false,
@@ -28,14 +28,14 @@ void main() {
       expect(item.isAction, isFalse);
     });
 
-    test('only action items expose task semantics', () {
+    test('only action items expose action semantics', () {
       final item = InboxItem.fromMap({
         'id': 'item-2',
         'user_id': 'user-1',
-        'title': '完成项目原型',
+        'content': '完成项目原型',
         'item_type': 'action',
         'inbox_column': 'focus',
-        'sort_order': 1,
+        'position': 1,
         'is_archived': false,
         'is_pinned': true,
         'is_topic': false,

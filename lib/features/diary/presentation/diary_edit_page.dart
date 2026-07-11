@@ -58,7 +58,8 @@ class _DiaryEditPageState extends ConsumerState<DiaryEditPage> {
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      initialDate: AppDateUtils.parseNullable(_dateController.text) ?? DateTime.now(),
+      initialDate:
+          AppDateUtils.parseNullable(_dateController.text) ?? DateTime.now(),
     );
     if (picked != null) {
       _dateController.text = AppDateUtils.formatDate(picked);
@@ -76,7 +77,9 @@ class _DiaryEditPageState extends ConsumerState<DiaryEditPage> {
         .where((tag) => tag.isNotEmpty)
         .toList();
 
-    await ref.read(diaryRepositoryProvider).save(
+    await ref
+        .read(diaryRepositoryProvider)
+        .save(
           id: widget.entry?.id,
           entryDate: AppDateUtils.parseNullable(_dateController.text)!,
           title: _titleController.text.trim(),
@@ -117,7 +120,9 @@ class _DiaryEditPageState extends ConsumerState<DiaryEditPage> {
                   controller: _dateController,
                   readOnly: true,
                   validator: (value) =>
-                      AppDateUtils.parseNullable(value ?? '') == null ? '请选择日期' : null,
+                      AppDateUtils.parseNullable(value ?? '') == null
+                      ? '请选择日期'
+                      : null,
                   decoration: InputDecoration(
                     labelText: '日期',
                     suffixIcon: IconButton(

@@ -11,18 +11,18 @@ class InboxRepository {
 
   Stream<List<InboxItem>> watch() {
     return _database
-        .watchTasks(_userId)
+        .watchInboxItems(_userId)
         .map(
           (rows) => rows
-              .map((row) => InboxItem.fromMap(localTaskToRemoteMap(row)))
+              .map((row) => InboxItem.fromMap(localInboxItemToRemoteMap(row)))
               .toList(),
         );
   }
 
   Future<List<InboxItem>> list() async {
-    final rows = await _database.listTasks(_userId);
+    final rows = await _database.listInboxItems(_userId);
     return rows
-        .map((row) => InboxItem.fromMap(localTaskToRemoteMap(row)))
+        .map((row) => InboxItem.fromMap(localInboxItemToRemoteMap(row)))
         .toList();
   }
 
@@ -34,14 +34,13 @@ class InboxRepository {
           (minimum, item) => minimum < item.position ? minimum : item.position,
         );
     final now = DateTime.now().toUtc().toIso8601String();
-    await _database.saveTask({
+    await _database.saveInboxItem({
       'id': _uuid.v4(),
       'user_id': _userId,
-      'title': content,
-      'note': null,
+      'content': content,
       'item_type': null,
       'inbox_column': InboxColumn.pending.databaseValue,
-      'sort_order': firstPosition - 1,
+      'position': firstPosition - 1,
       'is_archived': false,
       'is_pinned': false,
       'is_topic': false,
@@ -64,9 +63,9 @@ class InboxRepository {
     bool? isCompleted,
   }) async {
     final action = type == InboxItemType.action && !isTopic;
-    final mutations = <TaskMutation>[
-      TaskMutation(item.id, {
-        'title': content,
+    final mutations = <InboxItemMutation>[
+      InboxItemMutation(item.id, {
+        'content': content,
         'item_type': isTopic
             ? InboxItemType.research.databaseValue
             : type?.databaseValue,
@@ -83,11 +82,12 @@ class InboxRepository {
         items
             .where((candidate) => candidate.parentId == item.id)
             .map(
-              (candidate) => TaskMutation(candidate.id, {'parent_id': null}),
+              (candidate) =>
+                  InboxItemMutation(candidate.id, {'parent_id': null}),
             ),
       );
     }
-    await _database.updateTasks(_userId, mutations);
+    await _database.updateInboxItems(_userId, mutations);
   }
 
   Future<void> setCompleted(InboxItem item, bool completed) {
@@ -115,8 +115,8 @@ class InboxRepository {
   }
 
   Future<void> setArchived(InboxItem item, bool archived) async {
-    final mutations = <TaskMutation>[
-      TaskMutation(item.id, {'is_archived': archived}),
+    final mutations = <InboxItemMutation>[
+      InboxItemMutation(item.id, {'is_archived': archived}),
     ];
     if (item.isTopic && archived) {
       final items = await list();
@@ -124,11 +124,12 @@ class InboxRepository {
         items
             .where((candidate) => candidate.parentId == item.id)
             .map(
-              (candidate) => TaskMutation(candidate.id, {'parent_id': null}),
+              (candidate) =>
+                  InboxItemMutation(candidate.id, {'parent_id': null}),
             ),
       );
     }
-    await _database.updateTasks(_userId, mutations);
+    await _database.updateInboxItems(_userId, mutations);
   }
 
   Future<void> togglePinned(InboxItem item, List<InboxItem> allItems) async {
@@ -137,7 +138,7 @@ class InboxRepository {
     if (pinned) {
       final peers = _itemsInColumn(allItems, item.column);
       final first = peers.isEmpty ? 0.0 : peers.first.position;
-      values['sort_order'] = first - 1;
+      values['position'] = first - 1;
     }
     await _update(item.id, values);
   }
@@ -147,7 +148,7 @@ class InboxRepository {
   }
 
   Future<void> delete(String id) {
-    return _database.deleteTask(_userId, id);
+    return _database.deleteInboxItem(_userId, id);
   }
 
   Future<void> moveToEdge(
@@ -167,7 +168,7 @@ class InboxRepository {
         : peers.last.position + 1;
     await _update(item.id, {
       'inbox_column': column.databaseValue,
-      'sort_order': position,
+      'position': position,
       'parent_id': null,
     });
   }
@@ -201,18 +202,18 @@ class InboxRepository {
     if (sourceColumn != destination) {
       mutations.addAll(_orderMutations(source, sourceColumn));
     }
-    await _database.updateTasks(_userId, mutations);
+    await _database.updateInboxItems(_userId, mutations);
   }
 
-  List<TaskMutation> _orderMutations(
+  List<InboxItemMutation> _orderMutations(
     List<InboxItem> items,
     InboxColumn column,
   ) {
     return [
       for (var index = 0; index < items.length; index++)
-        TaskMutation(items[index].id, {
+        InboxItemMutation(items[index].id, {
           'inbox_column': column.databaseValue,
-          'sort_order': index.toDouble(),
+          'position': index.toDouble(),
           'parent_id': null,
         }),
     ];
@@ -232,6 +233,6 @@ class InboxRepository {
   }
 
   Future<void> _update(String id, Map<String, dynamic> values) {
-    return _database.updateTasks(_userId, [TaskMutation(id, values)]);
+    return _database.updateInboxItems(_userId, [InboxItemMutation(id, values)]);
   }
 }

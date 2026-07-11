@@ -58,14 +58,14 @@ void main() {
   test('remote snapshot cannot resurrect a locally pending delete', () async {
     await repository.createQuick('不应复活');
     final item = (await repository.list()).single;
-    final staleRemoteRow = localTaskToRemoteMap(
-      (await database.listTasks('user-1')).single,
+    final staleRemoteRow = localInboxItemToRemoteMap(
+      (await database.listInboxItems('user-1')).single,
     );
     await repository.delete(item.id);
 
     await database.applyRemoteSnapshot(
       'user-1',
-      tasks: [staleRemoteRow],
+      inboxItems: [staleRemoteRow],
       diaryEntries: const [],
       calendarEvents: const [],
     );
