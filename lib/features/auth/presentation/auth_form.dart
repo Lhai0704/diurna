@@ -123,9 +123,13 @@ class _AuthFormState extends ConsumerState<AuthForm> {
                         : Text(isLogin ? '登录' : '注册'),
                   ),
                   TextButton(
-                    onPressed: () =>
-                        context.go(isLogin ? '/register' : '/login'),
-                    child: Text(isLogin ? '没有账号？注册' : '已有账号？登录'),
+                    onPressed: isLogin ? null : () => context.go('/login'),
+                    child: Text(
+                      isLogin ? '没有账号？注册' : '已有账号？登录',
+                      style: TextStyle(
+                        decoration: isLogin ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
                   ),
                 ],
               ),
