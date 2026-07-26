@@ -87,7 +87,16 @@ class InboxItemMutation {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(driftDatabase(name: 'diurna'));
+  AppDatabase()
+    : super(
+        driftDatabase(
+          name: 'diurna',
+          web: DriftWebOptions(
+            sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+            driftWorker: Uri.parse('drift_worker.js'),
+          ),
+        ),
+      );
 
   AppDatabase.forTesting(super.executor);
 
