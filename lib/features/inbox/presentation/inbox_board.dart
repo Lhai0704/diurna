@@ -1,3 +1,4 @@
+import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/core/utils/app_date_utils.dart';
 import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/inbox/data/inbox_item.dart';
@@ -35,12 +36,14 @@ class InboxBoard extends ConsumerStatefulWidget {
     required this.expanded,
     this.onExpand,
     this.headerAction,
+    this.retro = false,
     super.key,
   });
 
   final bool expanded;
   final VoidCallback? onExpand;
   final Widget? headerAction;
+  final bool retro;
 
   @override
   ConsumerState<InboxBoard> createState() => _InboxBoardState();
@@ -63,15 +66,39 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
         _buildHeader(context),
         if (widget.expanded)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: TextField(
-              onChanged: (value) => setState(() => _query = value.trim()),
-              decoration: const InputDecoration(
-                hintText: '搜索内容关键词',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
+            padding: EdgeInsets.fromLTRB(
+              widget.retro ? 6 : 16,
+              widget.retro ? 6 : 0,
+              widget.retro ? 6 : 16,
+              widget.retro ? 4 : 12,
             ),
+            child: widget.retro
+                ? RetroBevel(
+                    kind: RetroBevelKind.sunken,
+                    depth: 2,
+                    color: WindowsRetroColors.content,
+                    child: TextField(
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim()),
+                      decoration: const InputDecoration(
+                        filled: false,
+                        hintText: '搜索内容关键词',
+                        prefixIcon: Icon(Icons.search, size: 17),
+                        prefixIconConstraints: BoxConstraints(minWidth: 30),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
+                    ),
+                  )
+                : TextField(
+                    onChanged: (value) => setState(() => _query = value.trim()),
+                    decoration: const InputDecoration(
+                      hintText: '搜索内容关键词',
+                      prefixIcon: Icon(Icons.search),
+                      isDense: true,
+                    ),
+                  ),
           ),
         Expanded(
           child: items.when(
@@ -99,6 +126,7 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
                 visibleItems: visible,
                 allItems: allItems,
                 expanded: widget.expanded,
+                retro: widget.retro,
                 onRefresh: _refresh,
               );
             },
@@ -111,6 +139,48 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildFilterButton(context),
+        if (widget.onExpand != null) ...[
+          const SizedBox(width: 2),
+          if (widget.retro)
+            RetroToolbarButton(
+              tooltip: '展开收集箱',
+              onPressed: widget.onExpand,
+              icon: const Icon(Icons.open_in_full),
+            )
+          else
+            IconButton(
+              tooltip: '展开收集箱',
+              onPressed: widget.onExpand,
+              icon: const Icon(Icons.open_in_full),
+            ),
+        ],
+        if (widget.headerAction != null) ...[
+          const SizedBox(width: 2),
+          widget.headerAction!,
+        ],
+        const SizedBox(width: 2),
+        if (widget.retro)
+          RetroToolbarButton(
+            tooltip: '快速记录',
+            onPressed: () => showQuickCapture(context),
+            icon: const Icon(Icons.add),
+          )
+        else
+          IconButton(
+            tooltip: '快速记录',
+            onPressed: () => showQuickCapture(context),
+            icon: const Icon(Icons.add),
+          ),
+      ],
+    );
+
+    if (widget.retro) {
+      return RetroSectionHeader(title: '收集箱', trailing: actions);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
       child: Row(
@@ -118,47 +188,59 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
           Expanded(
             child: Text('收集箱', style: Theme.of(context).textTheme.titleLarge),
           ),
-          PopupMenuButton<InboxFilter>(
-            initialValue: _filter,
-            tooltip: '筛选：${_filter.label}',
-            icon: Badge(
+          actions,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterButton(BuildContext context) {
+    return PopupMenuButton<InboxFilter>(
+      initialValue: _filter,
+      tooltip: '筛选：${_filter.label}',
+      padding: EdgeInsets.zero,
+      icon: widget.retro
+          ? null
+          : Badge(
               isLabelVisible: _filter != InboxFilter.all,
               smallSize: 7,
               child: const Icon(Icons.filter_list),
             ),
-            itemBuilder: (context) => [
-              for (final filter in InboxFilter.values)
-                PopupMenuItem(
-                  value: filter,
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 28,
-                        child: _filter == filter
-                            ? const Icon(Icons.check, size: 18)
-                            : null,
-                      ),
-                      Text(filter.label),
-                    ],
+      itemBuilder: (context) => [
+        for (final filter in InboxFilter.values)
+          PopupMenuItem(
+            value: filter,
+            height: widget.retro ? 30 : kMinInteractiveDimension,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: _filter == filter
+                      ? const Icon(Icons.check, size: 16)
+                      : null,
+                ),
+                Text(filter.label),
+              ],
+            ),
+          ),
+      ],
+      onSelected: (value) => setState(() => _filter = value),
+      child: widget.retro
+          ? SizedBox.square(
+              dimension: WindowsRetroMetrics.toolbarButtonSize,
+              child: RetroBevel(
+                child: Center(
+                  child: Icon(
+                    Icons.filter_list,
+                    size: 16,
+                    color: _filter == InboxFilter.all
+                        ? WindowsRetroColors.text
+                        : WindowsRetroColors.activeBlue,
                   ),
                 ),
-            ],
-            onSelected: (value) => setState(() => _filter = value),
-          ),
-          if (widget.onExpand != null)
-            IconButton(
-              tooltip: '展开收集箱',
-              onPressed: widget.onExpand,
-              icon: const Icon(Icons.open_in_full),
-            ),
-          ?widget.headerAction,
-          IconButton(
-            tooltip: '快速记录',
-            onPressed: () => showQuickCapture(context),
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -186,12 +268,14 @@ class _InboxColumns extends StatelessWidget {
     required this.visibleItems,
     required this.allItems,
     required this.expanded,
+    required this.retro,
     required this.onRefresh,
   });
 
   final List<InboxItem> visibleItems;
   final List<InboxItem> allItems;
   final bool expanded;
+  final bool retro;
   final Future<void> Function() onRefresh;
 
   @override
@@ -206,7 +290,9 @@ class _InboxColumns extends StatelessWidget {
     pending.sort((a, b) => a.position.compareTo(b.position));
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(expanded ? 16 : 8, 0, expanded ? 16 : 8, 12),
+      padding: retro
+          ? const EdgeInsets.fromLTRB(4, 0, 4, 4)
+          : EdgeInsets.fromLTRB(expanded ? 16 : 8, 0, expanded ? 16 : 8, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -217,10 +303,11 @@ class _InboxColumns extends StatelessWidget {
               items: focus,
               allItems: allItems,
               compact: !expanded,
+              retro: retro,
               onRefresh: onRefresh,
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: retro ? 4 : 10),
           Expanded(
             flex: expanded ? 9 : 1,
             child: _InboxColumnView(
@@ -228,6 +315,7 @@ class _InboxColumns extends StatelessWidget {
               items: pending,
               allItems: allItems,
               compact: !expanded,
+              retro: retro,
               onRefresh: onRefresh,
             ),
           ),
@@ -243,6 +331,7 @@ class _InboxColumnView extends ConsumerWidget {
     required this.items,
     required this.allItems,
     required this.compact,
+    required this.retro,
     required this.onRefresh,
   });
 
@@ -250,6 +339,7 @@ class _InboxColumnView extends ConsumerWidget {
   final List<InboxItem> items;
   final List<InboxItem> allItems;
   final bool compact;
+  final bool retro;
   final Future<void> Function() onRefresh;
 
   Future<void> _moveToEnd(WidgetRef ref, InboxItem item) async {
@@ -266,8 +356,73 @@ class _InboxColumnView extends ConsumerWidget {
       onAcceptWithDetails: (details) => _moveToEnd(ref, details.data),
       builder: (context, candidates, rejected) {
         final hovering = candidates.isNotEmpty;
+        final content = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: retro ? 28 : null,
+              color: retro ? WindowsRetroColors.panel : null,
+              padding: EdgeInsets.fromLTRB(
+                retro ? 6 : 12,
+                retro ? 4 : 10,
+                retro ? 6 : 12,
+                retro ? 4 : 8,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      column.label,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  Text(
+                    '${items.length}',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+            ),
+            Divider(
+              height: 1,
+              color: retro
+                  ? WindowsRetroColors.shadow
+                  : colorScheme.outlineVariant,
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: onRefresh,
+                child: ListView.builder(
+                  key: PageStorageKey(column.databaseValue),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(vertical: retro ? 1 : 6),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return _DropBeforeTarget(
+                      item: item,
+                      allItems: allItems,
+                      compact: compact,
+                      retro: retro,
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+        if (retro) {
+          return RetroBevel(
+            kind: RetroBevelKind.sunken,
+            depth: 2,
+            color: hovering
+                ? WindowsRetroColors.selection
+                : WindowsRetroColors.content,
+            child: content,
+          );
+        }
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+          duration: const Duration(milliseconds: 100),
           decoration: BoxDecoration(
             color: hovering
                 ? colorScheme.primaryContainer.withValues(alpha: 0.28)
@@ -280,48 +435,7 @@ class _InboxColumnView extends ConsumerWidget {
               width: hovering ? 1.5 : 1,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        column.label,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    Text(
-                      '${items.length}',
-                      style: Theme.of(context).textTheme.labelMedium,
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: onRefresh,
-                  child: ListView.builder(
-                    key: PageStorageKey(column.databaseValue),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return _DropBeforeTarget(
-                        item: item,
-                        allItems: allItems,
-                        compact: compact,
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
+          child: content,
         );
       },
     );
@@ -333,11 +447,13 @@ class _DropBeforeTarget extends ConsumerWidget {
     required this.item,
     required this.allItems,
     required this.compact,
+    required this.retro,
   });
 
   final InboxItem item;
   final List<InboxItem> allItems;
   final bool compact;
+  final bool retro;
 
   Future<void> _accept(WidgetRef ref, InboxItem dragged) async {
     await ref
@@ -355,9 +471,9 @@ class _DropBeforeTarget extends ConsumerWidget {
         return Column(
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
+              duration: Duration(milliseconds: retro ? 60 : 120),
               height: candidates.isEmpty ? 0 : 4,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
+              margin: EdgeInsets.symmetric(horizontal: retro ? 2 : 8),
               color: Theme.of(context).colorScheme.primary,
             ),
             LayoutBuilder(
@@ -368,11 +484,12 @@ class _DropBeforeTarget extends ConsumerWidget {
                   width: constraints.maxWidth,
                   child: Material(
                     color: Colors.transparent,
-                    elevation: 8,
+                    elevation: retro ? 2 : 8,
                     child: _InboxCard(
                       item: item,
                       allItems: allItems,
                       compact: compact,
+                      retro: retro,
                       interactive: false,
                     ),
                   ),
@@ -383,12 +500,14 @@ class _DropBeforeTarget extends ConsumerWidget {
                     item: item,
                     allItems: allItems,
                     compact: compact,
+                    retro: retro,
                   ),
                 ),
                 child: _InboxCard(
                   item: item,
                   allItems: allItems,
                   compact: compact,
+                  retro: retro,
                 ),
               ),
             ),
@@ -417,12 +536,14 @@ class _InboxCard extends ConsumerWidget {
     required this.item,
     required this.allItems,
     this.compact = false,
+    this.retro = false,
     this.interactive = true,
   });
 
   final InboxItem item;
   final List<InboxItem> allItems;
   final bool compact;
+  final bool retro;
   final bool interactive;
 
   List<InboxItem> get _children => allItems
@@ -605,8 +726,12 @@ class _InboxCard extends ConsumerWidget {
     if (item.isTopic) {
       showDialog<void>(
         context: context,
-        builder: (context) =>
-            _TopicDialog(topic: item, children: _children, allItems: allItems),
+        builder: (context) => _TopicDialog(
+          topic: item,
+          children: _children,
+          allItems: allItems,
+          retro: retro,
+        ),
       );
     } else {
       showInboxEditSheet(context, item: item);
@@ -617,7 +742,7 @@ class _InboxCard extends ConsumerWidget {
     return PopupMenuButton<_ItemAction>(
       tooltip: '更多操作',
       padding: EdgeInsets.zero,
-      icon: const Icon(Icons.more_horiz, size: 20),
+      icon: retro ? null : const Icon(Icons.more_horiz, size: 20),
       onSelected: (value) => _handleAction(context, ref, value),
       itemBuilder: (context) => [
         const PopupMenuItem(value: _ItemAction.edit, child: Text('编辑')),
@@ -650,6 +775,14 @@ class _InboxCard extends ConsumerWidget {
         const PopupMenuDivider(),
         const PopupMenuItem(value: _ItemAction.delete, child: Text('删除')),
       ],
+      child: retro
+          ? const SizedBox.square(
+              dimension: 24,
+              child: RetroBevel(
+                child: Center(child: Icon(Icons.more_horiz, size: 16)),
+              ),
+            )
+          : null,
     );
   }
 
@@ -665,6 +798,10 @@ class _InboxCard extends ConsumerWidget {
     final metadata = details.isEmpty
         ? _friendlyTime(item.createdAt)
         : details.join(' · ');
+
+    if (retro) {
+      return _buildRetroRow(context, ref, children, metadata);
+    }
 
     return Card(
       margin: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 3 : 5),
@@ -798,12 +935,134 @@ class _InboxCard extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildRetroRow(
+    BuildContext context,
+    WidgetRef ref,
+    List<InboxItem> children,
+    String metadata,
+  ) {
+    final theme = Theme.of(context);
+    final secondaryLine = item.isTopic
+        ? '$metadata · ${children.length} 个子项'
+        : metadata;
+
+    return Material(
+      color: item.isPinned
+          ? WindowsRetroColors.selection.withValues(alpha: 0.42)
+          : WindowsRetroColors.content,
+      child: InkWell(
+        onTap: interactive ? () => _open(context) : null,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: WindowsRetroColors.grid)),
+          ),
+          padding: EdgeInsets.fromLTRB(3, compact ? 4 : 6, 2, compact ? 4 : 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.drag_indicator,
+                size: 16,
+                color: WindowsRetroColors.secondaryText,
+              ),
+              if (item.isAction) ...[
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: item.isCompleted,
+                    onChanged: interactive
+                        ? (value) => _run(
+                            context,
+                            ref,
+                            () => ref
+                                .read(inboxRepositoryProvider)
+                                .setCompleted(item, value ?? false),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 2),
+              ] else
+                const SizedBox(width: 3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (item.isTopic) ...[
+                          const _TypeTag(label: '研究主题', retro: true),
+                          const SizedBox(width: 4),
+                        ] else if (item.type != null) ...[
+                          _TypeTag(label: item.type!.label, retro: true),
+                          const SizedBox(width: 4),
+                        ],
+                        if (item.isPinned) ...[
+                          const Icon(
+                            Icons.push_pin,
+                            size: 13,
+                            color: WindowsRetroColors.activeBlue,
+                          ),
+                          const SizedBox(width: 3),
+                        ],
+                        Expanded(
+                          child: Text(
+                            item.content,
+                            maxLines: compact ? 2 : 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: item.isCompleted
+                                ? theme.textTheme.bodyMedium?.copyWith(
+                                    decoration: TextDecoration.lineThrough,
+                                    color: WindowsRetroColors.secondaryText,
+                                  )
+                                : theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      secondaryLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall,
+                    ),
+                    if (!compact && item.isTopic && children.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        children
+                            .take(2)
+                            .map((child) => child.content)
+                            .join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (interactive) ...[
+                const SizedBox(width: 3),
+                _actionMenu(context, ref),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TypeTag extends StatelessWidget {
-  const _TypeTag({required this.label});
+  const _TypeTag({required this.label, this.retro = false});
 
   final String label;
+  final bool retro;
 
   @override
   Widget build(BuildContext context) {
@@ -811,8 +1070,11 @@ class _TypeTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: colors.secondaryContainer.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(4),
+        color: retro
+            ? WindowsRetroColors.panel
+            : colors.secondaryContainer.withValues(alpha: 0.65),
+        border: retro ? Border.all(color: WindowsRetroColors.shadow) : null,
+        borderRadius: retro ? BorderRadius.zero : BorderRadius.circular(4),
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelSmall),
     );
@@ -824,11 +1086,13 @@ class _TopicDialog extends ConsumerWidget {
     required this.topic,
     required this.children,
     required this.allItems,
+    required this.retro,
   });
 
   final InboxItem topic;
   final List<InboxItem> children;
   final List<InboxItem> allItems;
+  final bool retro;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -847,7 +1111,7 @@ class _TopicDialog extends ConsumerWidget {
                   return ListTile(
                     leading: child.type == null
                         ? null
-                        : _TypeTag(label: child.type!.label),
+                        : _TypeTag(label: child.type!.label, retro: retro),
                     title: Text(child.content, maxLines: 3),
                     onTap: () => showInboxEditSheet(context, item: child),
                     trailing: IconButton(

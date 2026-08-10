@@ -1,5 +1,6 @@
 import 'package:diurna/core/utils/app_date_utils.dart';
 import 'package:diurna/core/sync/sync_providers.dart';
+import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
 import 'package:diurna/features/calendar/data/calendar_event_model.dart';
 import 'package:diurna/features/calendar/presentation/event_edit_page.dart';
@@ -19,22 +20,37 @@ class WindowsHomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      body: SafeArea(
-        child: Row(
-          children: const [
-            Expanded(child: _ScheduleMonthPanel()),
-            VerticalDivider(width: 1),
-            Expanded(
-              child: Column(
-                children: [
-                  Expanded(child: _DiaryPanel()),
-                  Divider(height: 1),
-                  Expanded(child: _InboxPanel()),
+    return Theme(
+      data: buildWindowsRetroTheme(Theme.of(context)),
+      child: Scaffold(
+        body: SafeArea(
+          child: ColoredBox(
+            color: WindowsRetroColors.desktop,
+            child: Padding(
+              padding: const EdgeInsets.all(WindowsRetroMetrics.space4),
+              child: Row(
+                children: const [
+                  Expanded(child: RetroPanel(child: _ScheduleMonthPanel())),
+                  SizedBox(width: WindowsRetroMetrics.space4),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: RetroPanel(child: _DiaryPanel()),
+                        ),
+                        SizedBox(height: WindowsRetroMetrics.space4),
+                        Expanded(
+                          flex: 7,
+                          child: RetroPanel(child: _InboxPanel()),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -50,7 +66,7 @@ class _ScheduleMonthPanel extends ConsumerWidget {
 
     return _Panel(
       title: '日程安排',
-      trailing: IconButton(
+      trailing: RetroToolbarButton(
         tooltip: '新增日程',
         onPressed: () => showEventEditPage(context),
         icon: const Icon(Icons.add),
@@ -106,7 +122,9 @@ class _ScrollableMonthCalendarState extends State<_ScrollableMonthCalendar> {
     _didCenterToday = true;
     Scrollable.ensureVisible(
       todayContext,
-      alignment: 0.5,
+      // Keep the selected day in view while leaving room above it for the
+      // current month and weekday headers on ordinary desktop window sizes.
+      alignment: 0.8,
       duration: Duration.zero,
     );
   }
@@ -139,7 +157,7 @@ class _ScrollableMonthCalendarState extends State<_ScrollableMonthCalendar> {
       onRefresh: widget.onRefresh,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
         child: Column(
           children: [
             for (var index = 0; index < 18; index++)
@@ -179,51 +197,80 @@ class _MonthSection extends StatelessWidget {
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '${month.year}年${month.month}月',
-              style: theme.textTheme.titleMedium,
-            ),
-          ),
-          Row(
-            children: weekdays
-                .map(
-                  (weekday) => Expanded(
-                    child: Center(
-                      child: Text(weekday, style: theme.textTheme.labelMedium),
-                    ),
+          RetroBevel(
+            child: SizedBox(
+              height: 26,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${month.year}年${month.month}月',
+                    style: theme.textTheme.titleMedium,
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 6),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: itemCount,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisExtent: 132,
+                ),
+              ),
             ),
-            itemBuilder: (context, index) {
-              final dayNumber = index - leadingEmptyDays + 1;
-              if (dayNumber < 1 || dayNumber > daysInMonth) {
-                return const _EmptyDayCell();
-              }
-              final day = DateTime(month.year, month.month, dayNumber);
-              final isToday = _sameDate(day, today);
-              return _DayCell(
-                key: isToday ? todayKey : null,
-                day: day,
-                isToday: isToday,
-                events: eventsByDate[_dateKey(day)] ?? const [],
-              );
-            },
+          ),
+          Container(
+            height: 24,
+            decoration: const BoxDecoration(
+              color: WindowsRetroColors.contentMuted,
+              border: Border(
+                left: BorderSide(color: WindowsRetroColors.grid),
+                right: BorderSide(color: WindowsRetroColors.grid),
+                bottom: BorderSide(color: WindowsRetroColors.grid),
+              ),
+            ),
+            child: Row(
+              children: weekdays
+                  .map(
+                    (weekday) => Expanded(
+                      child: Center(
+                        child: Text(
+                          weekday,
+                          style: theme.textTheme.labelMedium,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: WindowsRetroColors.grid),
+                top: BorderSide(color: WindowsRetroColors.grid),
+              ),
+            ),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: itemCount,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisExtent: 122,
+              ),
+              itemBuilder: (context, index) {
+                final dayNumber = index - leadingEmptyDays + 1;
+                if (dayNumber < 1 || dayNumber > daysInMonth) {
+                  return const _EmptyDayCell();
+                }
+                final day = DateTime(month.year, month.month, dayNumber);
+                final isToday = _sameDate(day, today);
+                return _DayCell(
+                  key: isToday ? todayKey : null,
+                  day: day,
+                  isToday: isToday,
+                  events: eventsByDate[_dateKey(day)] ?? const [],
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -236,7 +283,15 @@ class _EmptyDayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox.expand();
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        color: WindowsRetroColors.contentMuted,
+        border: Border(
+          right: BorderSide(color: WindowsRetroColors.grid),
+          bottom: BorderSide(color: WindowsRetroColors.grid),
+        ),
+      ),
+    );
   }
 }
 
@@ -255,52 +310,61 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final borderColor = isToday
-        ? colorScheme.primary
-        : colorScheme.outlineVariant;
-
-    return Card(
-      margin: const EdgeInsets.all(3),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: BorderSide(color: borderColor, width: isToday ? 1.5 : 1),
-      ),
+    return Material(
+      color: WindowsRetroColors.content,
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
         onTap: () => showEventEditPage(context, initialDate: day),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(
+              right: BorderSide(color: WindowsRetroColors.grid),
+              bottom: BorderSide(color: WindowsRetroColors.grid),
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Text(
-                    '${day.day}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: isToday ? colorScheme.primary : null,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (events.length > 5)
+              Container(
+                height: 22,
+                color: isToday
+                    ? WindowsRetroColors.activeBlue
+                    : WindowsRetroColors.contentMuted,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
                     Text(
-                      '+${events.length - 5}',
-                      style: theme.textTheme.labelSmall,
+                      '${day.day}',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: isToday
+                            ? WindowsRetroColors.selectedText
+                            : WindowsRetroColors.text,
+                      ),
                     ),
-                ],
+                    const Spacer(),
+                    if (events.length > 5)
+                      Text(
+                        '+${events.length - 5}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: isToday
+                              ? WindowsRetroColors.selectedText
+                              : WindowsRetroColors.secondaryText,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
               Expanded(
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: events.length > 5 ? 5 : events.length,
-                  itemBuilder: (context, index) {
-                    final event = events[index];
-                    return _CalendarTodoRow(event: event);
-                  },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 3, 3, 2),
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: events.length > 5 ? 5 : events.length,
+                    itemBuilder: (context, index) {
+                      final event = events[index];
+                      return _CalendarTodoRow(event: event);
+                    },
+                  ),
                 ),
               ),
             ],
@@ -326,9 +390,8 @@ class _CalendarTodoRow extends StatelessWidget {
     );
 
     return SizedBox(
-      height: 19,
+      height: 18,
       child: InkWell(
-        borderRadius: BorderRadius.circular(3),
         onTap: () => showEventEditPage(context, event: event),
         child: Align(
           alignment: Alignment.centerLeft,
@@ -439,13 +502,22 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SyncStatusIcon(),
-          TextButton.icon(
+          const SyncStatusIcon(retro: true),
+          const SizedBox(width: 2),
+          RetroPushButton(
             onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_today_outlined),
-            label: Text(AppDateUtils.formatDate(_selectedDate)),
+            minWidth: 112,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_today_outlined),
+                const SizedBox(width: 4),
+                Text(AppDateUtils.formatDate(_selectedDate)),
+              ],
+            ),
           ),
-          IconButton(
+          const SizedBox(width: 2),
+          RetroToolbarButton(
             tooltip: '退出登录',
             onPressed: () => ref.read(authRepositoryProvider).signOut(),
             icon: const Icon(Icons.logout),
@@ -458,30 +530,44 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
           _syncText(entry);
 
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Stack(
+            padding: const EdgeInsets.all(8),
+            child: Column(
               children: [
-                Positioned.fill(
-                  child: TextField(
-                    controller: _contentController,
-                    expands: true,
-                    maxLines: null,
-                    minLines: null,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      labelText: '正文',
-                      alignLabelWithHint: true,
-                      contentPadding: EdgeInsets.fromLTRB(12, 16, 150, 60),
+                Expanded(
+                  child: RetroBevel(
+                    kind: RetroBevelKind.sunken,
+                    depth: 2,
+                    color: WindowsRetroColors.content,
+                    child: TextField(
+                      controller: _contentController,
+                      expands: true,
+                      maxLines: null,
+                      minLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        filled: false,
+                        hintText: '记录今天……',
+                        contentPadding: EdgeInsets.all(8),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
                     ),
                   ),
                 ),
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: FilledButton.icon(
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: RetroPushButton(
                     onPressed: () => _save(entry),
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('保存日记'),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.save_outlined),
+                        SizedBox(width: 4),
+                        Text('保存日记'),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -502,7 +588,8 @@ class _InboxPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return InboxBoard(
       expanded: false,
-      onExpand: () => showExpandedInbox(context),
+      retro: true,
+      onExpand: () => showExpandedInbox(context, retro: true),
     );
   }
 }
@@ -519,20 +606,7 @@ class _Panel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-        ),
+        RetroSectionHeader(title: title, trailing: trailing),
         Expanded(child: child),
       ],
     );

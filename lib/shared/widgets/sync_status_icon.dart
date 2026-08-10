@@ -1,3 +1,4 @@
+import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/core/sync/sync_service.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 class SyncStatusIcon extends ConsumerWidget {
-  const SyncStatusIcon({super.key});
+  const SyncStatusIcon({this.retro = false, super.key});
+
+  final bool retro;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,9 +39,17 @@ class SyncStatusIcon extends ConsumerWidget {
       );
     }
 
+    final tooltip = _tooltip(snapshot);
+    if (retro) {
+      return RetroToolbarButton(
+        tooltip: tooltip,
+        onPressed: service?.syncNow,
+        icon: icon,
+      );
+    }
     return IconButton(
       visualDensity: VisualDensity.compact,
-      tooltip: _tooltip(snapshot),
+      tooltip: tooltip,
       onPressed: service?.syncNow,
       icon: icon,
     );

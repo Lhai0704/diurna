@@ -1,3 +1,4 @@
+import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
 import 'package:diurna/features/inbox/presentation/inbox_board.dart';
 import 'package:diurna/shared/widgets/sync_status_icon.dart';
@@ -30,18 +31,25 @@ class InboxPage extends ConsumerWidget {
   }
 }
 
-Future<void> showExpandedInbox(BuildContext context) {
+Future<void> showExpandedInbox(BuildContext context, {bool retro = false}) {
   return showDialog<void>(
     context: context,
     builder: (context) => Dialog(
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: EdgeInsets.all(retro ? 12 : 24),
       child: InboxBoard(
         expanded: true,
-        headerAction: IconButton(
-          tooltip: '关闭展开模式',
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close_fullscreen),
-        ),
+        retro: retro,
+        headerAction: retro
+            ? RetroToolbarButton(
+                tooltip: '关闭展开模式',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_fullscreen),
+              )
+            : IconButton(
+                tooltip: '关闭展开模式',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_fullscreen),
+              ),
       ),
     ),
   );
