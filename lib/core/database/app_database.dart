@@ -56,6 +56,19 @@ class LocalCalendarEvents extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class LocalMemos extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  TextColumn get title => text()();
+  TextColumn get content => text().withDefault(const Constant(''))();
+  RealColumn get position => real().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class PendingSyncOperations extends Table {
   TextColumn get key => text()();
   TextColumn get userId => text()();
@@ -78,11 +91,19 @@ class InboxItemMutation {
   final Map<String, dynamic> values;
 }
 
+class MemoMutation {
+  const MemoMutation(this.id, this.values);
+
+  final String id;
+  final Map<String, dynamic> values;
+}
+
 @DriftDatabase(
   tables: [
     LocalInboxItems,
     LocalDiaryEntries,
     LocalCalendarEvents,
+    LocalMemos,
     PendingSyncOperations,
   ],
 )
@@ -101,7 +122,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -120,6 +141,9 @@ class AppDatabase extends _$AppDatabase {
         );
         await migrator.deleteTable('local_tasks');
         await migrator.createTable(localInboxItems);
+      }
+      if (from < 4) {
+        await migrator.createTable(localMemos);
       }
     },
   );
@@ -176,6 +200,26 @@ class AppDatabase extends _$AppDatabase {
       (table) => OrderingTerm(expression: table.createdAt),
     ]);
     return query.watch();
+  }
+
+  Stream<List<LocalMemo>> watchMemos(String userId) {
+    final query = select(localMemos)
+      ..where((table) => table.userId.equals(userId))
+      ..orderBy([
+        (table) => OrderingTerm(expression: table.position),
+        (table) => OrderingTerm.desc(table.createdAt),
+      ]);
+    return query.watch();
+  }
+
+  Future<List<LocalMemo>> listMemos(String userId) {
+    final query = select(localMemos)
+      ..where((table) => table.userId.equals(userId))
+      ..orderBy([
+        (table) => OrderingTerm(expression: table.position),
+        (table) => OrderingTerm.desc(table.createdAt),
+      ]);
+    return query.get();
   }
 
   Future<void> saveInboxItem(Map<String, dynamic> payload) async {
@@ -300,6 +344,52 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> saveMemo(Map<String, dynamic> payload) async {
+    await transaction(() async {
+      final id = payload['id'] as String;
+      final existing = await _findMemo(id);
+      final normalized = <String, dynamic>{
+        ...payload,
+        if (existing != null)
+          'created_at': existing.createdAt.toUtc().toIso8601String(),
+      };
+      await into(localMemos).insertOnConflictUpdate(_memoCompanion(normalized));
+      await _enqueueUpsert('memos', normalized);
+    });
+  }
+
+  Future<void> updateMemos(String userId, List<MemoMutation> mutations) async {
+    if (mutations.isEmpty) {
+      return;
+    }
+    await transaction(() async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final mutation in mutations) {
+        final existing = await _findMemo(mutation.id);
+        if (existing == null || existing.userId != userId) {
+          continue;
+        }
+        final payload = <String, dynamic>{
+          ...localMemoToRemoteMap(existing),
+          ...mutation.values,
+          'updated_at': now,
+        };
+        await into(localMemos).insertOnConflictUpdate(_memoCompanion(payload));
+        await _enqueueUpsert('memos', payload);
+      }
+    });
+  }
+
+  Future<void> deleteMemo(String userId, String id) async {
+    await transaction(() async {
+      await (delete(localMemos)..where(
+            (table) => table.id.equals(id) & table.userId.equals(userId),
+          ))
+          .go();
+      await _enqueueDelete(userId, 'memos', id);
+    });
+  }
+
   Stream<int> watchPendingCount(String userId) {
     final query = select(pendingSyncOperations)
       ..where((table) => table.userId.equals(userId));
@@ -344,11 +434,13 @@ class AppDatabase extends _$AppDatabase {
     required List<Map<String, dynamic>> inboxItems,
     required List<Map<String, dynamic>> diaryEntries,
     required List<Map<String, dynamic>> calendarEvents,
+    required List<Map<String, dynamic>> memos,
   }) async {
     await transaction(() async {
       await _replaceRemoteInboxItems(userId, inboxItems);
       await _replaceRemoteDiaryEntries(userId, diaryEntries);
       await _replaceRemoteCalendarEvents(userId, calendarEvents);
+      await _replaceRemoteMemos(userId, memos);
     });
   }
 
@@ -427,6 +519,29 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  Future<void> _replaceRemoteMemos(
+    String userId,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final pendingIds = await _pendingEntityIds(userId, 'memos');
+    final remoteIds = rows.map((row) => row['id'] as String).toSet();
+    for (final row in rows) {
+      if (!pendingIds.contains(row['id'])) {
+        await into(localMemos).insertOnConflictUpdate(_memoCompanion(row));
+      }
+    }
+    final localRows = await (select(
+      localMemos,
+    )..where((table) => table.userId.equals(userId))).get();
+    for (final row in localRows) {
+      if (!remoteIds.contains(row.id) && !pendingIds.contains(row.id)) {
+        await (delete(
+          localMemos,
+        )..where((table) => table.id.equals(row.id))).go();
+      }
+    }
+  }
+
   Future<Set<String>> _pendingEntityIds(
     String userId,
     String entityType,
@@ -454,6 +569,12 @@ class AppDatabase extends _$AppDatabase {
   Future<LocalCalendarEvent?> _findCalendarEvent(String id) {
     return (select(
       localCalendarEvents,
+    )..where((table) => table.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<LocalMemo?> _findMemo(String id) {
+    return (select(
+      localMemos,
     )..where((table) => table.id.equals(id))).getSingleOrNull();
   }
 
@@ -544,6 +665,18 @@ Map<String, dynamic> localCalendarEventToRemoteMap(LocalCalendarEvent row) {
   };
 }
 
+Map<String, dynamic> localMemoToRemoteMap(LocalMemo row) {
+  return {
+    'id': row.id,
+    'user_id': row.userId,
+    'title': row.title,
+    'content': row.content,
+    'position': row.position,
+    'created_at': row.createdAt.toUtc().toIso8601String(),
+    'updated_at': row.updatedAt.toUtc().toIso8601String(),
+  };
+}
+
 LocalInboxItemsCompanion _inboxItemCompanion(Map<String, dynamic> map) {
   return LocalInboxItemsCompanion.insert(
     id: map['id'] as String,
@@ -587,6 +720,18 @@ LocalCalendarEventsCompanion _calendarCompanion(Map<String, dynamic> map) {
     isCompleted: Value(map['is_completed'] as bool? ?? false),
     note: Value(map['note'] as String?),
     remindAt: Value(_parseDateTime(map['remind_at'])),
+    createdAt: _parseDateTime(map['created_at']) ?? DateTime.now().toUtc(),
+    updatedAt: _parseDateTime(map['updated_at']) ?? DateTime.now().toUtc(),
+  );
+}
+
+LocalMemosCompanion _memoCompanion(Map<String, dynamic> map) {
+  return LocalMemosCompanion.insert(
+    id: map['id'] as String,
+    userId: map['user_id'] as String,
+    title: map['title'] as String,
+    content: Value(map['content'] as String? ?? ''),
+    position: Value((map['position'] as num?)?.toDouble() ?? 0),
     createdAt: _parseDateTime(map['created_at']) ?? DateTime.now().toUtc(),
     updatedAt: _parseDateTime(map['updated_at']) ?? DateTime.now().toUtc(),
   );

@@ -2,6 +2,7 @@ import 'package:diurna/core/database/app_database.dart';
 import 'package:diurna/core/sync/sync_remote_data_source.dart';
 import 'package:diurna/core/sync/sync_service.dart';
 import 'package:diurna/features/inbox/data/inbox_repository.dart';
+import 'package:diurna/features/memo/data/memo_repository.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,11 +10,13 @@ void main() {
   late AppDatabase database;
   late _FakeRemoteDataSource remote;
   late InboxRepository repository;
+  late MemoRepository memoRepository;
 
   setUp(() {
     database = AppDatabase.forTesting(NativeDatabase.memory());
     remote = _FakeRemoteDataSource();
     repository = InboxRepository(database, 'user-1');
+    memoRepository = MemoRepository(database, 'user-1');
   });
 
   tearDown(() async {
@@ -89,12 +92,33 @@ void main() {
     expect(await database.pendingCount('user-1'), 0);
     await service.dispose();
   });
+
+  test('pushes and pulls memos through the shared snapshot', () async {
+    await memoRepository.save(title: '本地备忘录', content: '正文');
+    final service = SyncService(
+      database: database,
+      remote: remote,
+      userId: 'user-1',
+    );
+
+    await service.syncNow();
+    expect(remote.memos.values.single['title'], '本地备忘录');
+
+    final remoteMemo = remote.memos.values.single;
+    remoteMemo['title'] = '远端已修改';
+    remoteMemo['updated_at'] = DateTime.utc(2026, 9, 4).toIso8601String();
+    await service.syncNow();
+
+    expect((await memoRepository.list()).single.title, '远端已修改');
+    await service.dispose();
+  });
 }
 
 class _FakeRemoteDataSource implements SyncRemoteDataSource {
   final Map<String, Map<String, dynamic>> inboxItems = {};
   final Map<String, Map<String, dynamic>> diaryEntries = {};
   final Map<String, Map<String, dynamic>> calendarEvents = {};
+  final Map<String, Map<String, dynamic>> memos = {};
   bool failRequests = false;
 
   @override
@@ -118,6 +142,7 @@ class _FakeRemoteDataSource implements SyncRemoteDataSource {
       calendarEvents: calendarEvents.values
           .map(Map<String, dynamic>.from)
           .toList(),
+      memos: memos.values.map(Map<String, dynamic>.from).toList(),
     );
   }
 
@@ -126,6 +151,7 @@ class _FakeRemoteDataSource implements SyncRemoteDataSource {
       'inbox_items' => inboxItems,
       'diary_entries' => diaryEntries,
       'calendar_events' => calendarEvents,
+      'memos' => memos,
       _ => throw ArgumentError.value(table, 'table'),
     };
   }

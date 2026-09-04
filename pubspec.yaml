@@ -1,5 +1,5 @@
 name: diurna
-description: "A personal inbox, calendar, and diary app."
+description: "A personal inbox, calendar, diary, and memo app."
 publish_to: 'none'
 version: 1.0.0+1
 

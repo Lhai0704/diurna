@@ -7,6 +7,7 @@ import 'package:diurna/features/calendar/presentation/calendar_page.dart';
 import 'package:diurna/features/diary/presentation/diary_list_page.dart';
 import 'package:diurna/features/home/presentation/windows_home_page.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
+import 'package:diurna/features/memo/presentation/memo_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +29,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
       if (loggedIn && authRoute) {
+        return '/inbox';
+      }
+      final memosRoute = state.matchedLocation.startsWith('/memos');
+      final unsupportedNativeMemoRoute =
+          !kIsWeb && defaultTargetPlatform != TargetPlatform.windows;
+      if (loggedIn && memosRoute && unsupportedNativeMemoRoute) {
         return '/inbox';
       }
       return null;
@@ -66,6 +73,25 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/memos',
+                builder: (context, state) => const MemoPage(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const MemoDetailPage(),
+                  ),
+                  GoRoute(
+                    path: ':memoId',
+                    builder: (context, state) =>
+                        MemoDetailPage(memoId: state.pathParameters['memoId']),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     ],
@@ -94,15 +120,26 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform == TargetPlatform.windows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       return const WindowsHomePage();
     }
 
     final wide = MediaQuery.sizeOf(context).width >= 720;
-    final destinations = const [
-      NavigationDestination(icon: Icon(Icons.inbox_outlined), label: '收集箱'),
-      NavigationDestination(icon: Icon(Icons.event_note_outlined), label: '日程'),
-      NavigationDestination(icon: Icon(Icons.book_outlined), label: '日记'),
+    final destinations = [
+      const NavigationDestination(
+        icon: Icon(Icons.inbox_outlined),
+        label: '收集箱',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.event_note_outlined),
+        label: '日程',
+      ),
+      const NavigationDestination(icon: Icon(Icons.book_outlined), label: '日记'),
+      if (kIsWeb)
+        const NavigationDestination(
+          icon: Icon(Icons.note_outlined),
+          label: '备忘录',
+        ),
     ];
 
     if (wide) {
@@ -113,19 +150,24 @@ class HomeShell extends StatelessWidget {
               selectedIndex: navigationShell.currentIndex,
               onDestinationSelected: navigationShell.goBranch,
               labelType: NavigationRailLabelType.all,
-              destinations: const [
-                NavigationRailDestination(
+              destinations: [
+                const NavigationRailDestination(
                   icon: Icon(Icons.inbox_outlined),
                   label: Text('收集箱'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(Icons.event_note_outlined),
                   label: Text('日程'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(Icons.book_outlined),
                   label: Text('日记'),
                 ),
+                if (kIsWeb)
+                  const NavigationRailDestination(
+                    icon: Icon(Icons.note_outlined),
+                    label: Text('备忘录'),
+                  ),
               ],
             ),
             const VerticalDivider(width: 1),

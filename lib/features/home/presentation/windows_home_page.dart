@@ -9,6 +9,7 @@ import 'package:diurna/features/diary/data/diary_model.dart';
 import 'package:diurna/features/diary/providers/diary_providers.dart';
 import 'package:diurna/features/inbox/presentation/inbox_board.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
+import 'package:diurna/features/memo/presentation/memo_page.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
 import 'package:diurna/shared/widgets/loading_view.dart';
 import 'package:diurna/shared/widgets/sync_status_icon.dart';
@@ -30,7 +31,21 @@ class WindowsHomePage extends ConsumerWidget {
               padding: const EdgeInsets.all(WindowsRetroMetrics.space4),
               child: Row(
                 children: const [
-                  Expanded(child: RetroPanel(child: _ScheduleMonthPanel())),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          flex: 6,
+                          child: RetroPanel(child: _ScheduleMonthPanel()),
+                        ),
+                        SizedBox(height: WindowsRetroMetrics.space4),
+                        Expanded(
+                          flex: 4,
+                          child: RetroPanel(child: MemoBoard(retro: true)),
+                        ),
+                      ],
+                    ),
+                  ),
                   SizedBox(width: WindowsRetroMetrics.space4),
                   Expanded(
                     child: Column(

@@ -123,6 +123,7 @@ class SyncService {
         inboxItems: remoteSnapshot.inboxItems,
         diaryEntries: remoteSnapshot.diaryEntries,
         calendarEvents: remoteSnapshot.calendarEvents,
+        memos: remoteSnapshot.memos,
       );
       _pendingCount = await _database.pendingCount(_userId);
       _lastSyncedAt = DateTime.now();

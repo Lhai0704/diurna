@@ -13,11 +13,13 @@ class RemoteSnapshot {
     required this.inboxItems,
     required this.diaryEntries,
     required this.calendarEvents,
+    required this.memos,
   });
 
   final List<Map<String, dynamic>> inboxItems;
   final List<Map<String, dynamic>> diaryEntries;
   final List<Map<String, dynamic>> calendarEvents;
+  final List<Map<String, dynamic>> memos;
 }
 
 class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
@@ -41,11 +43,13 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
       _client.from('inbox_items').select(),
       _client.from('diary_entries').select(),
       _client.from('calendar_events').select(),
+      _client.from('memos').select(),
     ]);
     return RemoteSnapshot(
       inboxItems: _rows(results[0]),
       diaryEntries: _rows(results[1]),
       calendarEvents: _rows(results[2]),
+      memos: _rows(results[3]),
     );
   }
 

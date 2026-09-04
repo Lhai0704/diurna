@@ -68,6 +68,7 @@ void main() {
       inboxItems: [staleRemoteRow],
       diaryEntries: const [],
       calendarEvents: const [],
+      memos: const [],
     );
 
     expect(await repository.list(), isEmpty);
