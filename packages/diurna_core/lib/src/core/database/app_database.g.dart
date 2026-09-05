@@ -2534,6 +2534,30 @@ class $PendingSyncOperationsTable extends PendingSyncOperations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<String> generation = GeneratedColumn<String>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('legacy'),
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('legacy'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     key,
@@ -2545,6 +2569,8 @@ class $PendingSyncOperationsTable extends PendingSyncOperations
     createdAt,
     attemptCount,
     lastError,
+    generation,
+    groupId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2630,6 +2656,18 @@ class $PendingSyncOperationsTable extends PendingSyncOperations
         lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
       );
     }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    }
     return context;
   }
 
@@ -2675,6 +2713,14 @@ class $PendingSyncOperationsTable extends PendingSyncOperations
         DriftSqlType.string,
         data['${effectivePrefix}last_error'],
       ),
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      )!,
     );
   }
 
@@ -2695,6 +2741,8 @@ class PendingSyncOperation extends DataClass
   final DateTime createdAt;
   final int attemptCount;
   final String? lastError;
+  final String generation;
+  final String groupId;
   const PendingSyncOperation({
     required this.key,
     required this.userId,
@@ -2705,6 +2753,8 @@ class PendingSyncOperation extends DataClass
     required this.createdAt,
     required this.attemptCount,
     this.lastError,
+    required this.generation,
+    required this.groupId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2722,6 +2772,8 @@ class PendingSyncOperation extends DataClass
     if (!nullToAbsent || lastError != null) {
       map['last_error'] = Variable<String>(lastError);
     }
+    map['generation'] = Variable<String>(generation);
+    map['group_id'] = Variable<String>(groupId);
     return map;
   }
 
@@ -2740,6 +2792,8 @@ class PendingSyncOperation extends DataClass
       lastError: lastError == null && nullToAbsent
           ? const Value.absent()
           : Value(lastError),
+      generation: Value(generation),
+      groupId: Value(groupId),
     );
   }
 
@@ -2758,6 +2812,8 @@ class PendingSyncOperation extends DataClass
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       attemptCount: serializer.fromJson<int>(json['attemptCount']),
       lastError: serializer.fromJson<String?>(json['lastError']),
+      generation: serializer.fromJson<String>(json['generation']),
+      groupId: serializer.fromJson<String>(json['groupId']),
     );
   }
   @override
@@ -2773,6 +2829,8 @@ class PendingSyncOperation extends DataClass
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'attemptCount': serializer.toJson<int>(attemptCount),
       'lastError': serializer.toJson<String?>(lastError),
+      'generation': serializer.toJson<String>(generation),
+      'groupId': serializer.toJson<String>(groupId),
     };
   }
 
@@ -2786,6 +2844,8 @@ class PendingSyncOperation extends DataClass
     DateTime? createdAt,
     int? attemptCount,
     Value<String?> lastError = const Value.absent(),
+    String? generation,
+    String? groupId,
   }) => PendingSyncOperation(
     key: key ?? this.key,
     userId: userId ?? this.userId,
@@ -2796,6 +2856,8 @@ class PendingSyncOperation extends DataClass
     createdAt: createdAt ?? this.createdAt,
     attemptCount: attemptCount ?? this.attemptCount,
     lastError: lastError.present ? lastError.value : this.lastError,
+    generation: generation ?? this.generation,
+    groupId: groupId ?? this.groupId,
   );
   PendingSyncOperation copyWithCompanion(PendingSyncOperationsCompanion data) {
     return PendingSyncOperation(
@@ -2814,6 +2876,10 @@ class PendingSyncOperation extends DataClass
           ? data.attemptCount.value
           : this.attemptCount,
       lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
     );
   }
 
@@ -2828,7 +2894,9 @@ class PendingSyncOperation extends DataClass
           ..write('payloadJson: $payloadJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('attemptCount: $attemptCount, ')
-          ..write('lastError: $lastError')
+          ..write('lastError: $lastError, ')
+          ..write('generation: $generation, ')
+          ..write('groupId: $groupId')
           ..write(')'))
         .toString();
   }
@@ -2844,6 +2912,8 @@ class PendingSyncOperation extends DataClass
     createdAt,
     attemptCount,
     lastError,
+    generation,
+    groupId,
   );
   @override
   bool operator ==(Object other) =>
@@ -2857,7 +2927,9 @@ class PendingSyncOperation extends DataClass
           other.payloadJson == this.payloadJson &&
           other.createdAt == this.createdAt &&
           other.attemptCount == this.attemptCount &&
-          other.lastError == this.lastError);
+          other.lastError == this.lastError &&
+          other.generation == this.generation &&
+          other.groupId == this.groupId);
 }
 
 class PendingSyncOperationsCompanion
@@ -2871,6 +2943,8 @@ class PendingSyncOperationsCompanion
   final Value<DateTime> createdAt;
   final Value<int> attemptCount;
   final Value<String?> lastError;
+  final Value<String> generation;
+  final Value<String> groupId;
   final Value<int> rowid;
   const PendingSyncOperationsCompanion({
     this.key = const Value.absent(),
@@ -2882,6 +2956,8 @@ class PendingSyncOperationsCompanion
     this.createdAt = const Value.absent(),
     this.attemptCount = const Value.absent(),
     this.lastError = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PendingSyncOperationsCompanion.insert({
@@ -2894,6 +2970,8 @@ class PendingSyncOperationsCompanion
     required DateTime createdAt,
     this.attemptCount = const Value.absent(),
     this.lastError = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : key = Value(key),
        userId = Value(userId),
@@ -2911,6 +2989,8 @@ class PendingSyncOperationsCompanion
     Expression<DateTime>? createdAt,
     Expression<int>? attemptCount,
     Expression<String>? lastError,
+    Expression<String>? generation,
+    Expression<String>? groupId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2923,6 +3003,8 @@ class PendingSyncOperationsCompanion
       if (createdAt != null) 'created_at': createdAt,
       if (attemptCount != null) 'attempt_count': attemptCount,
       if (lastError != null) 'last_error': lastError,
+      if (generation != null) 'generation': generation,
+      if (groupId != null) 'group_id': groupId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2937,6 +3019,8 @@ class PendingSyncOperationsCompanion
     Value<DateTime>? createdAt,
     Value<int>? attemptCount,
     Value<String?>? lastError,
+    Value<String>? generation,
+    Value<String>? groupId,
     Value<int>? rowid,
   }) {
     return PendingSyncOperationsCompanion(
@@ -2949,6 +3033,8 @@ class PendingSyncOperationsCompanion
       createdAt: createdAt ?? this.createdAt,
       attemptCount: attemptCount ?? this.attemptCount,
       lastError: lastError ?? this.lastError,
+      generation: generation ?? this.generation,
+      groupId: groupId ?? this.groupId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2983,6 +3069,12 @@ class PendingSyncOperationsCompanion
     if (lastError.present) {
       map['last_error'] = Variable<String>(lastError.value);
     }
+    if (generation.present) {
+      map['generation'] = Variable<String>(generation.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3001,6 +3093,8 @@ class PendingSyncOperationsCompanion
           ..write('createdAt: $createdAt, ')
           ..write('attemptCount: $attemptCount, ')
           ..write('lastError: $lastError, ')
+          ..write('generation: $generation, ')
+          ..write('groupId: $groupId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3411,7 +3505,16 @@ class $$LocalInboxItemsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalInboxItemsTable, LocalInboxItem>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $LocalInboxItemsTable,
+                    LocalInboxItem
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -3696,7 +3799,16 @@ class $$LocalDiaryEntriesTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalDiaryEntriesTable, LocalDiaryEntry>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $LocalDiaryEntriesTable,
+                    LocalDiaryEntry
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -3988,7 +4100,18 @@ class $$LocalCalendarEventsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalCalendarEventsTable, LocalCalendarEvent>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $LocalCalendarEventsTable,
+                    LocalCalendarEvent
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -4230,7 +4353,16 @@ class $$LocalMemosTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalMemosTable, LocalMemo>(table),
+                  BaseReferences<_$AppDatabase, $LocalMemosTable, LocalMemo>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -4262,6 +4394,8 @@ typedef $$PendingSyncOperationsTableCreateCompanionBuilder =
       required DateTime createdAt,
       Value<int> attemptCount,
       Value<String?> lastError,
+      Value<String> generation,
+      Value<String> groupId,
       Value<int> rowid,
     });
 typedef $$PendingSyncOperationsTableUpdateCompanionBuilder =
@@ -4275,6 +4409,8 @@ typedef $$PendingSyncOperationsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<int> attemptCount,
       Value<String?> lastError,
+      Value<String> generation,
+      Value<String> groupId,
       Value<int> rowid,
     });
 
@@ -4329,6 +4465,16 @@ class $$PendingSyncOperationsTableFilterComposer
 
   ColumnFilters<String> get lastError => $composableBuilder(
     column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4386,6 +4532,16 @@ class $$PendingSyncOperationsTableOrderingComposer
     column: $table.lastError,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PendingSyncOperationsTableAnnotationComposer
@@ -4429,6 +4585,14 @@ class $$PendingSyncOperationsTableAnnotationComposer
 
   GeneratedColumn<String> get lastError =>
       $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
 }
 
 class $$PendingSyncOperationsTableTableManager
@@ -4486,6 +4650,8 @@ class $$PendingSyncOperationsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> attemptCount = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
+                Value<String> generation = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PendingSyncOperationsCompanion(
                 key: key,
@@ -4497,6 +4663,8 @@ class $$PendingSyncOperationsTableTableManager
                 createdAt: createdAt,
                 attemptCount: attemptCount,
                 lastError: lastError,
+                generation: generation,
+                groupId: groupId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4510,6 +4678,8 @@ class $$PendingSyncOperationsTableTableManager
                 required DateTime createdAt,
                 Value<int> attemptCount = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
+                Value<String> generation = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PendingSyncOperationsCompanion.insert(
                 key: key,
@@ -4521,10 +4691,24 @@ class $$PendingSyncOperationsTableTableManager
                 createdAt: createdAt,
                 attemptCount: attemptCount,
                 lastError: lastError,
+                generation: generation,
+                groupId: groupId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<
+                    $PendingSyncOperationsTable,
+                    PendingSyncOperation
+                  >(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $PendingSyncOperationsTable,
+                    PendingSyncOperation
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

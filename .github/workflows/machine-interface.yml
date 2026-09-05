@@ -1,0 +1,49 @@
+name: Machine interface checks
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.5
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Core
+        working-directory: packages/diurna_core
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+      - name: CLI bundle and tests
+        working-directory: packages/diurna_cli
+        run: |
+          dart pub get
+          dart analyze
+          dart build cli -o build --target bin/diurna.dart
+          dart test
+      - name: MCP
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+      - name: Flutter
+        run: |
+          Copy-Item .env.example .env
+          flutter pub get
+          flutter analyze
+          flutter test

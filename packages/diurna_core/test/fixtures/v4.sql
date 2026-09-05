@@ -1,0 +1,9 @@
+create table local_inbox_items(id text primary key,user_id text not null,content text not null,due_date integer,priority integer,is_completed integer not null default 0,item_type text,inbox_column text not null default 'pending',position real not null default 0,is_archived integer not null default 0,is_pinned integer not null default 0,is_topic integer not null default 0,parent_id text,created_at integer not null,updated_at integer not null);
+insert into local_inbox_items values('inbox-id','legacy-user','old capture',null,null,0,null,'pending',0,0,0,0,null,1788566400,1788566400);
+create table local_calendar_events(id text primary key,user_id text not null,title text not null,scheduled_date integer not null,is_completed integer not null default 0,note text,remind_at integer,created_at integer not null,updated_at integer not null);
+create table local_memos(id text primary key,user_id text not null,title text not null,content text not null default '',position real not null default 0,created_at integer not null,updated_at integer not null);
+create table local_diary_entries(id text primary key,user_id text not null,entry_date integer not null,title text not null,content text not null,mood text,tags_json text not null default '[]',created_at integer not null,updated_at integer not null);
+insert into local_diary_entries values('diary-id','legacy-user',1788566400,'old diary','private diary',null,'[]',1788566400,1788566400);
+create table pending_sync_operations(key text primary key,user_id text not null,entity_type text not null,entity_id text not null,operation text not null,payload_json text,created_at integer not null,attempt_count integer not null default 0,last_error text);
+insert into pending_sync_operations values('legacy-user:inbox_items:inbox-id','legacy-user','inbox_items','inbox-id','upsert','{"content":"old capture"}',1788566400,0,null);
+pragma user_version=4;

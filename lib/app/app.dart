@@ -28,6 +28,9 @@ class _DiurnaAppState extends ConsumerState<DiurnaApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    ref
+        .read(syncServiceProvider)
+        ?.setForeground(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       ref.read(syncServiceProvider)?.syncNow();
     }

@@ -170,17 +170,27 @@ class _InboxEditSheetState extends ConsumerState<InboxEditSheet> {
       return;
     }
     setState(() => _saving = true);
-    await ref
-        .read(inboxRepositoryProvider)
-        .save(
-          item: widget.item,
-          content: _contentController.text.trim(),
-          type: _type,
-          isTopic: _isTopic,
-          dueDate: AppDateUtils.parseNullable(_dueDateController.text),
-          priority: _priority,
-          isCompleted: _completed,
-        );
+    try {
+      await ref
+          .read(inboxRepositoryProvider)
+          .save(
+            item: widget.item,
+            content: _contentController.text.trim(),
+            type: _type,
+            isTopic: _isTopic,
+            dueDate: AppDateUtils.parseNullable(_dueDateController.text),
+            priority: _priority,
+            isCompleted: _completed,
+          );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存失败或内容已变化。草稿已保留。')));
+      }
+      return;
+    }
     if (mounted) {
       Navigator.of(context).pop();
     }

@@ -1,3 +1,4 @@
+import 'package:diurna_core/diurna_core.dart' show DiurnaException;
 import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/core/sync/sync_providers.dart';
 import 'package:diurna/features/memo/data/memo_model.dart';
@@ -179,7 +180,7 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
     _contentController.text = memo.content;
     _syncingText = false;
     _selectedId = memo.id;
-    _loadedVersion = memo.updatedAt.toIso8601String();
+    _loadedVersion = memo.version ?? memo.updatedAt.toIso8601String();
     _draft = false;
     _dirty = false;
     _titleError = null;
@@ -220,7 +221,7 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
       }
       return;
     }
-    final version = selected.updatedAt.toIso8601String();
+    final version = selected.version ?? selected.updatedAt.toIso8601String();
     if (!_dirty && version != _loadedVersion) {
       _loadMemo(selected);
     }
@@ -232,13 +233,26 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
       setState(() => _titleError = '请输入标题');
       return false;
     }
-    final id = await ref
-        .read(memoRepositoryProvider)
-        .save(
-          id: _draft ? null : _selectedId,
-          title: title,
-          content: _contentController.text,
+    late final String id;
+    try {
+      id = await ref
+          .read(memoRepositoryProvider)
+          .save(
+            id: _draft ? null : _selectedId,
+            expectedVersion: _draft ? null : _loadedVersion,
+            title: title,
+            content: _contentController.text,
+          );
+    } on DiurnaException catch (error) {
+      if (mounted) {
+        setState(
+          () => _titleError = error.code == 'CONFLICT'
+              ? '内容已在其他位置修改。草稿已保留，请重新读取后合并。'
+              : error.message,
         );
+      }
+      return false;
+    }
     if (!mounted) {
       return true;
     }
@@ -617,7 +631,7 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   }
 
   void _load(Memo memo) {
-    final version = memo.updatedAt.toIso8601String();
+    final version = memo.version ?? memo.updatedAt.toIso8601String();
     if (_dirty || version == _loadedVersion) {
       return;
     }
@@ -643,13 +657,26 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
       setState(() => _titleError = '请输入标题');
       return false;
     }
-    final id = await ref
-        .read(memoRepositoryProvider)
-        .save(
-          id: widget.memoId,
-          title: title,
-          content: _contentController.text,
+    late final String id;
+    try {
+      id = await ref
+          .read(memoRepositoryProvider)
+          .save(
+            id: widget.memoId,
+            expectedVersion: _loadedVersion,
+            title: title,
+            content: _contentController.text,
+          );
+    } on DiurnaException catch (error) {
+      if (mounted) {
+        setState(
+          () => _titleError = error.code == 'CONFLICT'
+              ? '内容已在其他位置修改。草稿已保留，请重新读取后合并。'
+              : error.message,
         );
+      }
+      return false;
+    }
     if (!mounted) {
       return true;
     }

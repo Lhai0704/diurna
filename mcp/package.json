@@ -1,0 +1,14 @@
+{
+  "name": "diurna-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "tsc && node --test dist/test/*.test.js",
+    "start": "node dist/src/index.js"
+  },
+  "dependencies": {"@modelcontextprotocol/sdk": "^1.27.1", "zod": "^3.25.76"},
+  "devDependencies": {"typescript": "^5.9.3", "@types/node": "^22.19.0"}
+}

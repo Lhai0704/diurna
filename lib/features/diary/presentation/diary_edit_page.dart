@@ -77,18 +77,28 @@ class _DiaryEditPageState extends ConsumerState<DiaryEditPage> {
         .where((tag) => tag.isNotEmpty)
         .toList();
 
-    await ref
-        .read(diaryRepositoryProvider)
-        .save(
-          id: widget.entry?.id,
-          entryDate: AppDateUtils.parseNullable(_dateController.text)!,
-          title: _titleController.text.trim(),
-          content: _contentController.text.trim(),
-          mood: _moodController.text.trim().isEmpty
-              ? null
-              : _moodController.text.trim(),
-          tags: tags,
-        );
+    try {
+      await ref
+          .read(diaryRepositoryProvider)
+          .save(
+            id: widget.entry?.id,
+            expectedVersion: widget.entry?.version,
+            entryDate: AppDateUtils.parseNullable(_dateController.text)!,
+            title: _titleController.text.trim(),
+            content: _contentController.text.trim(),
+            mood: _moodController.text.trim().isEmpty
+                ? null
+                : _moodController.text.trim(),
+            tags: tags,
+          );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存失败或内容已变化。草稿已保留。')));
+      }
+      return;
+    }
     if (mounted) {
       Navigator.of(context).pop();
     }

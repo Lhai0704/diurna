@@ -114,6 +114,7 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
           .read(calendarRepositoryProvider)
           .save(
             id: widget.event?.id,
+            expectedVersion: widget.event?.version,
             title: _titleController.text.trim(),
             scheduledDate: AppDateUtils.parseNullable(_dateController.text)!,
             isCompleted: _isCompleted,
@@ -124,6 +125,12 @@ class _EventEditPageState extends ConsumerState<EventEditPage> {
           );
       if (mounted) {
         Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存失败或内容已变化。请保留草稿并重新读取。')));
       }
     } finally {
       if (mounted) {

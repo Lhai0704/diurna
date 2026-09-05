@@ -46,3 +46,13 @@ app.*.map.json
 
 
 .env
+
+# Local Agent credentials, caches and test databases
+.diurna/
+**/session.enc
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/build/
+**/node_modules/
+mcp/dist/

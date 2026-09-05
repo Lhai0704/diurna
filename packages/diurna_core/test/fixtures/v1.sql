@@ -1,0 +1,9 @@
+create table local_tasks(id text primary key,user_id text not null,title text not null,note text,due_date integer,priority integer,is_completed integer not null default 0,item_type text,inbox_column text not null default 'pending',sort_order real not null default 0,is_archived integer not null default 0,is_pinned integer not null default 0,is_topic integer not null default 0,parent_id text,created_at integer not null,updated_at integer not null);
+insert into local_tasks values('task-id','legacy-user','old title','old note',null,null,0,null,'pending',3,0,0,0,null,1788566400,1788566400);
+create table local_calendar_events(id text primary key,user_id text not null,title text not null,starts_at integer not null,ends_at integer not null,location text,note text,remind_at integer,created_at integer not null,updated_at integer not null);
+insert into local_calendar_events values('event-id','legacy-user','old event',1788566400,1788570000,'old location','old event note',null,1788566400,1788566400);
+create table local_diary_entries(id text primary key,user_id text not null,entry_date integer not null,title text not null,content text not null,mood text,tags_json text not null default '[]',created_at integer not null,updated_at integer not null);
+insert into local_diary_entries values('diary-id','legacy-user',1788566400,'old diary','private diary',null,'[]',1788566400,1788566400);
+create table pending_sync_operations(key text primary key,user_id text not null,entity_type text not null,entity_id text not null,operation text not null,payload_json text,created_at integer not null,attempt_count integer not null default 0,last_error text);
+insert into pending_sync_operations values('legacy-user:tasks:task-id','legacy-user','tasks','task-id','upsert','{"title":"old title","note":"old note"}',1788566400,0,null);
+pragma user_version=1;
