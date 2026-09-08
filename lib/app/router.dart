@@ -7,6 +7,8 @@ import 'package:diurna/features/calendar/presentation/calendar_page.dart';
 import 'package:diurna/features/diary/presentation/diary_list_page.dart';
 import 'package:diurna/features/home/presentation/windows_home_page.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
+import 'package:diurna/features/integrations/presentation/integrations_page.dart';
+import 'package:diurna/features/integrations/presentation/oauth_connected_page.dart';
 import 'package:diurna/features/memo/presentation/memo_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +46,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterPage(),
+      ),
+      GoRoute(
+        path: '/settings/integrations',
+        builder: (context, state) => const IntegrationsPage(),
+      ),
+      GoRoute(
+        path: '/integrations/connected',
+        builder: (context, state) => OauthConnectedPage(
+          provider: state.uri.queryParameters['provider'],
+          error: state.uri.queryParameters['error'],
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>

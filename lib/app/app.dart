@@ -2,6 +2,7 @@ import 'package:diurna/app/router.dart';
 import 'package:diurna/app/theme.dart';
 import 'package:diurna/core/constants/app_constants.dart';
 import 'package:diurna/core/sync/sync_providers.dart';
+import 'package:diurna/features/integrations/providers/integration_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -33,6 +34,7 @@ class _DiurnaAppState extends ConsumerState<DiurnaApp>
         ?.setForeground(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       ref.read(syncServiceProvider)?.syncNow();
+      ref.invalidate(integrationConnectionsProvider);
     }
   }
 

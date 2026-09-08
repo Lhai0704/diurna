@@ -47,6 +47,9 @@ app.*.map.json
 
 .env
 
+# Supabase CLI cache
+supabase/.temp/
+
 # Local Agent credentials, caches and test databases
 .diurna/
 **/session.enc

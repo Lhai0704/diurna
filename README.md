@@ -13,13 +13,14 @@ Diurna 是一个使用 Flutter 和 Supabase 构建的个人信息管理应用，
   首页将它放在左侧日程下方；Web 宽屏使用左右分栏，手机浏览器使用列表与详情页。
 - 机器接口：共享 Dart 业务层、独立 Windows JSON CLI、20 个 stdio MCP tools 和 Diurna Skill。
 - 同步协议 v2：版本冲突保护、持久化上传回执、Realtime 通知及冲突处理。
+- 外部连接：手动、单向把 Inbox / Memo / Diary 导出到 Notion，把全日程事件导出到 Google Calendar。Web 在收集箱顶栏链接图标进入；Windows 在日记面板标题栏。授权与导出走 Edge Functions，Flutter 不读取第三方 token。详见 [外部连接](docs/external-integrations.md)。
 
 ## 本地运行
 
 1. 复制 `.env.example` 为 `.env`，填写 Supabase 配置。
 2. 在 Supabase SQL Editor 中执行 `supabase/schema.sql` 初始化新项目。
 3. 现有项目先备份并按 [同步升级说明](docs/sync-protocol.md) 执行增量迁移。
-   不要在已有用户数据上重跑 20260711 的测试数据重建脚本。
+   不要在已有用户数据上重跑 `20260711000001` / `20260711000002` 的测试数据重建脚本。
 4. 远端必须支持 protocol v2；启用协议门槛后旧客户端需要升级才能继续上传。
 5. 获取依赖并运行应用：
 
@@ -29,6 +30,8 @@ flutter run -d windows
 ```
 
 Windows Release 客户端在 `build/windows/x64/runner/Release/diurna.exe`，需连同同目录的 `data` 和 dll 一起使用。协议 v2 启用后，旧客户端无法继续上传。
+
+外部连接的 OAuth 密钥、`INTEGRATION_TOKEN_KEY` 和 `SUPABASE_DB_URL` 只放在 Supabase Edge Function Secrets，不要写入 `.env` 或仓库。Redirect URI 与密钥名称见 [外部连接](docs/external-integrations.md)。
 
 ## 数据与同步
 

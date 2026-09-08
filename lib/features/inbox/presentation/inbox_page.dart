@@ -2,6 +2,7 @@ import 'package:diurna/app/windows_retro_theme.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
 import 'package:diurna/features/inbox/presentation/inbox_board.dart';
 import 'package:diurna/shared/widgets/sync_status_icon.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,6 +19,11 @@ class InboxPage extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SyncStatusIcon(),
+              IconButton(
+                tooltip: '外部连接',
+                onPressed: () => context.push('/settings/integrations'),
+                icon: const Icon(Icons.link),
+              ),
               IconButton(
                 tooltip: '退出登录',
                 onPressed: () => ref.read(authRepositoryProvider).signOut(),

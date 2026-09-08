@@ -1,12 +1,31 @@
-# Implementation verification — 2026-09-05
+# Implementation verification
 
-## Delivered in the working tree
+## External integrations — 2026-09-08
+
+Manual one-way Notion and Google Calendar export is in the working tree: Flutter **外部连接** UI, Edge Functions `integrations` and `integrations-oauth-callback`, additive SQL `20260908120000_add_external_integrations.sql`, and isolated SQL tests. Protocol v2 objects were not rewritten. Flutter does not read provider tokens.
+
+Live project `diurna` (`yuhnjgflxieiewzdodoa`): historical migrations were recorded as applied without re-executing `20260711` SQL; only the integrations migration was applied. Both functions are deployed (`integrations` JWT on, OAuth callback JWT off). Operator secrets were set in the Dashboard (values not in git).
+
+Windows Release client: the authenticated user connected Notion and Google Calendar, ran **立即同步** on both, and confirmed the remote `Diurna` Notion page/databases and Google `Diurna` calendar. This commit deploys the Web client via Cloudflare Pages (`/settings/integrations` from the inbox header).
+
+Still not certified:
+
+- iOS build and iOS OAuth/sync were not run (Windows host).
+- Hosted Realtime timing was not re-measured.
+- CLI/MCP have no provider OAuth commands (intentional).
+- No cron, bidirectional merge or remote hard-delete.
+
+See [external-integrations](external-integrations.md).
+
+## Machine interface — 2026-09-05
+
+### Delivered in the working tree
 
 Shared pure Dart repositories, application service and versioned local-first synchronization; independent Windows CLI bundle with DPAPI session and JSON commands; 20-tool TypeScript stdio MCP adapter; Realtime invalidation and conflict view; additive SQL migrations; Skill and AGENTS development guidance.
 
 The Flutter import locations export the shared core. Its database name and platform initialization remain unchanged. Generated Drift code now lives in diurna_core.
 
-## Verified locally
+### Verified locally
 
 | Check | Result |
 |---|---|
@@ -24,7 +43,7 @@ SQL tests cover two-user RLS, replay receipts, revision conflicts, old-client re
 
 CLI runtime tests use a loopback mock Auth/RPC server and temporary encrypted profiles. They cover refresh, online create/update/search, upload failure retaining the local entity, offline cache and process lock. These are not hosted Supabase authentication tests.
 
-## Rollout and remaining acceptance
+### Rollout and remaining acceptance
 
 Protocol v2 incremental migrations were applied to the live Supabase project, in the order in sync-protocol.md. CLI login and snapshot sync against that project succeeded for an authenticated user: `pendingCount` was 0, no conflicts, and existing Inbox / Memo / Diary rows were readable. Codex and Grok Build stdio MCP servers were pointed at the production CLI profile (`%LOCALAPPDATA%\DiurnaAgent`). A disposable hosted test project was used first to prove CLI create/upload before touching live data.
 

@@ -1,0 +1,8 @@
+# Edge Functions for Diurna external integrations.
+# Do not expose the integrations Postgres schema via the Data API.
+
+[functions.integrations]
+verify_jwt = true
+
+[functions.integrations-oauth-callback]
+verify_jwt = false

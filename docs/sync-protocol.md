@@ -16,12 +16,14 @@ Realtime subscribes only to the current user's RLS-protected signal row. A trigg
 
 Back up server data and local database files, and verify restoration before production rollout. Test the scripts on a disposable Supabase project or isolated PostgreSQL instance first.
 
-1. Apply `20260905_add_versioned_sync.sql` (additive revisions, metadata, snapshot and write RPCs).
-2. Apply `20260905_enable_remote_sync_signals.sql` (signals, RLS and publication).
+1. Apply `20260905000001_add_versioned_sync.sql` (additive revisions, metadata, snapshot and write RPCs).
+2. Apply `20260905000002_enable_remote_sync_signals.sql` (signals, RLS and publication).
 3. Prepare upgraded Windows, Web and iOS clients.
-4. Apply `20260905_enforce_sync_protocol_v2.sql` and roll out upgraded clients together. The protocol guard rejects old unconditional writes; old clients retain their local queue until upgrade.
+4. Apply `20260905000003_enforce_sync_protocol_v2.sql` and roll out upgraded clients together. The protocol guard rejects old unconditional writes; old clients retain their local queue until upgrade.
 
-There is no safe guarantee of conflict protection while old clients are still allowed unconditional writes. Treat the pre-enforcement period as deployment preparation, not the completed rollout. A new clean installation uses `schema.sql`, which includes all three scripts. Do not run the 20260711 destructive historical migrations on existing user data.
+There is no safe guarantee of conflict protection while old clients are still allowed unconditional writes. Treat the pre-enforcement period as deployment preparation, not the completed rollout. A new clean installation uses `schema.sql`, which includes protocol v2 and later additive objects. Do not run the `20260711000001` / `20260711000002` destructive historical migrations on existing user data.
+
+`20260908120000_add_external_integrations.sql` is additive (connection metadata, private `integrations` schema). It does not alter v2 RPCs, revisions or signals. External Notion/Google export is not part of the Drift pending queue; see [external-integrations](external-integrations.md).
 
 Drift v4→v5 adds queue generation/group fields and sync metadata. Pending v4 operations with unknown baseline use expected revision -1 and become retained conflicts rather than silently taking the latest remote version. Legacy v1/v2 tasks are mapped to Inbox without deleting the original `local_tasks` table. Old calendar date-range rows and queue payloads are retained in `legacy_calendar_events` / `legacy_pending_sync_operations`; extra old fields are also included in the migrated note. Unsupported retired tasks operations are retained as legacy conflicts.
 

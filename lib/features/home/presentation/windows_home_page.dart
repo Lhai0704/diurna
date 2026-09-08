@@ -8,6 +8,7 @@ import 'package:diurna/features/calendar/providers/calendar_providers.dart';
 import 'package:diurna/features/diary/data/diary_model.dart';
 import 'package:diurna/features/diary/providers/diary_providers.dart';
 import 'package:diurna/features/inbox/presentation/inbox_board.dart';
+import 'package:diurna/features/integrations/presentation/integrations_page.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:diurna/features/memo/presentation/memo_page.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
@@ -518,6 +519,16 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SyncStatusIcon(retro: true),
+          const SizedBox(width: 2),
+          RetroToolbarButton(
+            tooltip: '外部连接',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const IntegrationsPage(),
+              ),
+            ),
+            icon: const Icon(Icons.link),
+          ),
           const SizedBox(width: 2),
           RetroPushButton(
             onPressed: _pickDate,
