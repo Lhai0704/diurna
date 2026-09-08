@@ -18,6 +18,7 @@ class SyncSnapshot {
     this.lastSyncedAt,
     this.conflictCount = 0,
     this.errorCode,
+    this.generation = 0,
   });
 
   const SyncSnapshot.idle()
@@ -26,7 +27,8 @@ class SyncSnapshot {
       lastError = null,
       lastSyncedAt = null,
       conflictCount = 0,
-      errorCode = null;
+      errorCode = null,
+      generation = 0;
 
   final int conflictCount;
   final String? errorCode;
@@ -34,6 +36,7 @@ class SyncSnapshot {
   final int pendingCount;
   final String? lastError;
   final DateTime? lastSyncedAt;
+  final int generation;
 }
 
 class SyncService {
@@ -77,6 +80,7 @@ class SyncService {
     pendingCount: _pendingCount,
     lastError: _lastError,
     lastSyncedAt: _lastSyncedAt,
+    generation: _seenGeneration,
   );
 
   Stream<SyncSnapshot> get snapshots async* {

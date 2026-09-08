@@ -76,7 +76,7 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
                 ? RetroBevel(
                     kind: RetroBevelKind.sunken,
                     depth: 2,
-                    color: WindowsRetroColors.content,
+                    color: DesktopChrome.of(context).content,
                     child: TextField(
                       onChanged: (value) =>
                           setState(() => _query = value.trim()),
@@ -234,8 +234,8 @@ class _InboxBoardState extends ConsumerState<InboxBoard> {
                     Icons.filter_list,
                     size: 16,
                     color: _filter == InboxFilter.all
-                        ? WindowsRetroColors.text
-                        : WindowsRetroColors.activeBlue,
+                        ? DesktopChrome.of(context).text
+                        : DesktopChrome.of(context).accent,
                   ),
                 ),
               ),
@@ -361,7 +361,7 @@ class _InboxColumnView extends ConsumerWidget {
           children: [
             Container(
               height: retro ? 28 : null,
-              color: retro ? WindowsRetroColors.panel : null,
+              color: retro ? DesktopChrome.of(context).panel : null,
               padding: EdgeInsets.fromLTRB(
                 retro ? 6 : 12,
                 retro ? 4 : 10,
@@ -386,7 +386,7 @@ class _InboxColumnView extends ConsumerWidget {
             Divider(
               height: 1,
               color: retro
-                  ? WindowsRetroColors.shadow
+                  ? DesktopChrome.of(context).border
                   : colorScheme.outlineVariant,
             ),
             Expanded(
@@ -416,8 +416,8 @@ class _InboxColumnView extends ConsumerWidget {
             kind: RetroBevelKind.sunken,
             depth: 2,
             color: hovering
-                ? WindowsRetroColors.selection
-                : WindowsRetroColors.content,
+                ? DesktopChrome.of(context).selection
+                : DesktopChrome.of(context).content,
             child: content,
           );
         }
@@ -947,24 +947,25 @@ class _InboxCard extends ConsumerWidget {
         ? '$metadata · ${children.length} 个子项'
         : metadata;
 
+    final chrome = DesktopChrome.of(context);
     return Material(
       color: item.isPinned
-          ? WindowsRetroColors.selection.withValues(alpha: 0.42)
-          : WindowsRetroColors.content,
+          ? chrome.selection.withValues(alpha: 0.42)
+          : chrome.content,
       child: InkWell(
         onTap: interactive ? () => _open(context) : null,
         child: Container(
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: WindowsRetroColors.grid)),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: chrome.grid)),
           ),
           padding: EdgeInsets.fromLTRB(3, compact ? 4 : 6, 2, compact ? 4 : 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.drag_indicator,
                 size: 16,
-                color: WindowsRetroColors.secondaryText,
+                color: chrome.secondaryText,
               ),
               if (item.isAction) ...[
                 SizedBox(
@@ -1002,10 +1003,10 @@ class _InboxCard extends ConsumerWidget {
                           const SizedBox(width: 4),
                         ],
                         if (item.isPinned) ...[
-                          const Icon(
+                          Icon(
                             Icons.push_pin,
                             size: 13,
-                            color: WindowsRetroColors.activeBlue,
+                            color: chrome.accent,
                           ),
                           const SizedBox(width: 3),
                         ],
@@ -1017,7 +1018,7 @@ class _InboxCard extends ConsumerWidget {
                             style: item.isCompleted
                                 ? theme.textTheme.bodyMedium?.copyWith(
                                     decoration: TextDecoration.lineThrough,
-                                    color: WindowsRetroColors.secondaryText,
+                                    color: chrome.secondaryText,
                                   )
                                 : theme.textTheme.bodyMedium,
                           ),
@@ -1067,14 +1068,17 @@ class _TypeTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final chrome = DesktopChrome.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: retro
-            ? WindowsRetroColors.panel
+            ? chrome.panel
             : colors.secondaryContainer.withValues(alpha: 0.65),
-        border: retro ? Border.all(color: WindowsRetroColors.shadow) : null,
-        borderRadius: retro ? BorderRadius.zero : BorderRadius.circular(4),
+        border: retro ? Border.all(color: chrome.border) : null,
+        borderRadius: retro
+            ? chrome.controlBorderRadius
+            : BorderRadius.circular(4),
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelSmall),
     );

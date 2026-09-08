@@ -20,9 +20,9 @@ class InboxPage extends ConsumerWidget {
             children: [
               const SyncStatusIcon(),
               IconButton(
-                tooltip: '外部连接',
-                onPressed: () => context.push('/settings/integrations'),
-                icon: const Icon(Icons.link),
+                tooltip: '设置',
+                onPressed: () => context.push('/settings'),
+                icon: const Icon(Icons.settings_outlined),
               ),
               IconButton(
                 tooltip: '退出登录',

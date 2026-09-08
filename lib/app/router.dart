@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:diurna/app/visual_style.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
 import 'package:diurna/features/auth/presentation/login_page.dart';
 import 'package:diurna/features/auth/presentation/register_page.dart';
@@ -10,6 +11,8 @@ import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:diurna/features/integrations/presentation/integrations_page.dart';
 import 'package:diurna/features/integrations/presentation/oauth_connected_page.dart';
 import 'package:diurna/features/memo/presentation/memo_page.dart';
+import 'package:diurna/features/settings/presentation/settings_page.dart';
+import 'package:diurna/features/settings/providers/visual_style_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,8 +51,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const RegisterPage(),
       ),
       GoRoute(
-        path: '/settings/integrations',
-        builder: (context, state) => const IntegrationsPage(),
+        path: '/settings',
+        builder: (context, state) => const SettingsPage(),
+        routes: [
+          GoRoute(
+            path: 'integrations',
+            builder: (context, state) => const IntegrationsPage(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/integrations/connected',
@@ -126,18 +135,19 @@ class GoRouterRefreshStream extends ChangeNotifier {
   }
 }
 
-class HomeShell extends StatelessWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visualStyle = ref.watch(visualStyleProvider);
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+    if (shouldUseDesktopLayout(style: visualStyle, wide: wide)) {
       return const WindowsHomePage();
     }
 
-    final wide = MediaQuery.sizeOf(context).width >= 720;
     final destinations = [
       const NavigationDestination(
         icon: Icon(Icons.inbox_outlined),
@@ -148,7 +158,7 @@ class HomeShell extends StatelessWidget {
         label: '日程',
       ),
       const NavigationDestination(icon: Icon(Icons.book_outlined), label: '日记'),
-      if (kIsWeb)
+      if (showMemoNavigation)
         const NavigationDestination(
           icon: Icon(Icons.note_outlined),
           label: '备忘录',
@@ -176,7 +186,7 @@ class HomeShell extends StatelessWidget {
                   icon: Icon(Icons.book_outlined),
                   label: Text('日记'),
                 ),
-                if (kIsWeb)
+                if (showMemoNavigation)
                   const NavigationRailDestination(
                     icon: Icon(Icons.note_outlined),
                     label: Text('备忘录'),

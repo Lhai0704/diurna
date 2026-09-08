@@ -1,13 +1,13 @@
 # External integrations (Notion / Google Calendar)
 
-Manual, one-way export from Diurna. Protocol v2 is unchanged: local Drift still syncs to Supabase first. External providers are a separate Edge Function path.
+One-way export from Diurna. Protocol v2 is unchanged: local Drift still syncs to Supabase first. External providers are a separate Edge Function path.
 
 ## What shipped
 
 - Notion: Inbox, Memo and Diary, on first sync as a `Diurna` page plus three databases.
 - Google Calendar: all-day events on a `Diurna` calendar created with `calendar.app.created`.
 - One active connection per user per provider.
-- Connect, disconnect and **立即同步** from the Flutter **外部连接** page. No cron, webhook, bidirectional merge or remote hard-delete.
+- Connect, disconnect and **立即同步** from the Flutter **外部连接** page. After protocol v2 generation advances, or after local pending writes drain, the Flutter session waits 1 minute then one-way exports connected providers. Google access tokens are refreshed automatically; a 401 after refresh becomes `REAUTH_REQUIRED` and does not retry every minute. The 60-second cloud poll does not start an export by itself. No cron, webhook, bidirectional merge or remote hard-delete.
 
 Flutter never reads third-party tokens. Authenticated clients may `SELECT` their own `integration_connections` and `external_sync_links` rows. Token ciphertext lives in the private `integrations` schema (not on the Data API).
 
@@ -15,11 +15,11 @@ Flutter never reads third-party tokens. Authenticated clients may `SELECT` their
 
 | Client | Where |
 |---|---|
-| Web | Collect inbox header, link icon, tooltip `外部连接` → `/settings/integrations` |
-| Windows | Diary panel title bar, same icon |
-| After OAuth | Browser lands on `/integrations/connected`, then return to **外部连接** |
+| Retro / modern desktop | Diary panel title bar, settings icon → `/settings` → **外部连接** |
+| Web style | Collect inbox header, same settings icon |
+| After OAuth | Browser lands on `/integrations/connected`, then return to **外部连接** (`/settings/integrations`) |
 
-`尚未同步` means connected but no export yet. `同步成功` means the last manual export finished.
+`尚未同步` means connected but no export yet. `同步成功` means the last export finished.
 
 Notion's page picker is the public-integration consent screen. Existing notes do not need to be selected; first sync creates Diurna's own page.
 
@@ -81,4 +81,4 @@ CLI and MCP do not connect or export to Notion/Google. Those stay on the Flutter
 
 ## Out of scope for this version
 
-Bidirectional sync, scheduled push, remote deletion on disconnect, and iOS device checks. Automated tests do not prove hosted OAuth or Realtime.
+Bidirectional sync, server-side cron/webhook export (the 1-minute debounce is a Flutter session), remote deletion on disconnect, and iOS device checks. Automated tests do not prove hosted OAuth or Realtime. Export while the app is closed waits until a Flutter session sees the newer generation.

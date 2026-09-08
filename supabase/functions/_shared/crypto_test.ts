@@ -1,6 +1,7 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { decryptTokenBundle, encryptTokenBundle } from "./crypto.ts";
 import { googleEventId } from "./google_id.ts";
+import { shouldRefreshAccessToken } from "./google_auth.ts";
 
 Deno.test("token bundle round-trip", async () => {
   const secret = "integration-token-key-for-tests";
@@ -34,4 +35,17 @@ Deno.test("google event id is base32hex-safe", () => {
   assertEquals(id, "durnaaaaaaaaabbbb4ccc8dddeeeeeeeeeeee");
   assert(/^[0-9a-v]+$/.test(id));
   assert(id.length >= 5 && id.length <= 1024);
+});
+
+Deno.test("google access tokens refresh before expiry", () => {
+  const now = new Date("2026-09-08T12:00:00Z");
+  assertEquals(shouldRefreshAccessToken(null, now), true);
+  assertEquals(
+    shouldRefreshAccessToken(new Date("2026-09-08T12:00:30Z"), now),
+    true,
+  );
+  assertEquals(
+    shouldRefreshAccessToken(new Date("2026-09-08T13:00:00Z"), now),
+    false,
+  );
 });

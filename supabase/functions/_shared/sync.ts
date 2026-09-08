@@ -1,5 +1,11 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { readTokenBundle } from "./credentials.ts";
+import { readCredential, writeTokenBundle } from "./credentials.ts";
+import {
+  isGoogleAuthFailure,
+  ReauthRequiredError,
+  refreshGoogleAccessToken,
+  shouldRefreshAccessToken,
+} from "./google_auth.ts";
 import { googleEventId } from "./google_id.ts";
 import { acquireConnectionLease, persistLeaseProgress } from "./lease.ts";
 import { finishPass, type JsonObject } from "./lease_logic.ts";
@@ -86,12 +92,33 @@ export async function runSync(args: {
     };
   }
 
-  const tokens = await readTokenBundle(connection.id);
-  if (!tokens) {
-    return { ok: false, status: "failed", error: { code: "REAUTH_REQUIRED" } };
+  const credential = await readCredential(connection.id);
+  if (!credential) {
+    return await failReauth(connection.id as string, args.userId, lease.runId);
+  }
+  const googleAuth = args.provider === "google"
+    ? new GoogleSession(connection.id as string, credential.bundle, credential.accessExpiresAt)
+    : null;
+  let accessToken: string;
+  try {
+    accessToken = googleAuth
+      ? await googleAuth.token()
+      : credential.bundle.access_token;
+  } catch (error) {
+    if (error instanceof ReauthRequiredError) {
+      return await failReauth(connection.id as string, args.userId, lease.runId);
+    }
+    throw error;
   }
 
-  connection = await ensureContainer(args.admin, connection, tokens.access_token, args.provider);
+  try {
+    connection = await ensureContainer(args.admin, connection, accessToken, args.provider, googleAuth);
+  } catch (error) {
+    if (error instanceof ReauthRequiredError) {
+      return await failReauth(connection.id as string, args.userId, lease.runId);
+    }
+    throw error;
+  }
 
   const modules = enabledModules(connection, args.provider);
   const cursor = { ...(lease.pageCursor ?? {}) };
@@ -124,8 +151,9 @@ export async function runSync(args: {
           module,
           row,
           link,
-          tokens: tokens.access_token,
+          tokens: googleAuth ? await googleAuth.token() : accessToken,
           connection,
+          googleAuth,
         });
         writes += 1;
         if (result.recovered) {
@@ -151,6 +179,9 @@ export async function runSync(args: {
           last_error: null,
         }, { onConflict: "connection_id,entity_type,entity_id" });
       } catch (error) {
+        if (error instanceof ReauthRequiredError) {
+          return await failReauth(connection.id as string, args.userId, lease.runId);
+        }
         counts.failed += 1;
         failures.push({
           entity_type: module,
@@ -235,11 +266,72 @@ export async function runSync(args: {
   };
 }
 
+async function failReauth(
+  connectionId: string,
+  userId: string,
+  runId: string,
+): Promise<Record<string, unknown>> {
+  await persistLeaseProgress({
+    connectionId,
+    userId,
+    runId,
+    pageCursor: {},
+    lastSyncStatus: "failed",
+    lastSyncSummary: { reason: "reauth_required" },
+    lastError: "REAUTH_REQUIRED",
+    lastSeenGeneration: null,
+    clearLease: true,
+    syncStartGeneration: null,
+  });
+  return {
+    ok: false,
+    status: "failed",
+    error: { code: "REAUTH_REQUIRED", message: "Reconnect Google Calendar" },
+  };
+}
+
+class GoogleSession {
+  constructor(
+    private readonly connectionId: string,
+    private bundle: { access_token: string; refresh_token: string },
+    private expiresAt: Date | null,
+  ) {}
+
+  async token(force = false): Promise<string> {
+    if (force || shouldRefreshAccessToken(this.expiresAt, new Date())) {
+      const next = await refreshGoogleAccessToken(this.bundle.refresh_token);
+      this.bundle = {
+        access_token: next.access_token,
+        refresh_token: next.refresh_token || this.bundle.refresh_token,
+      };
+      this.expiresAt = new Date(Date.now() + next.expires_in * 1000);
+      await writeTokenBundle(this.connectionId, this.bundle, this.expiresAt);
+    }
+    return this.bundle.access_token;
+  }
+
+  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${await this.token()}`);
+    const response = await fetch(url, { ...init, headers });
+    if (!isGoogleAuthFailure(response.status)) {
+      return response;
+    }
+    headers.set("Authorization", `Bearer ${await this.token(true)}`);
+    const retried = await fetch(url, { ...init, headers });
+    if (isGoogleAuthFailure(retried.status)) {
+      throw new ReauthRequiredError();
+    }
+    return retried;
+  }
+}
+
 async function ensureContainer(
   admin: SupabaseClient,
   connection: Record<string, unknown>,
   accessToken: string,
   provider: "notion" | "google",
+  googleAuth: GoogleSession | null,
 ): Promise<Record<string, unknown>> {
   const container = (connection.container ?? {}) as JsonObject;
   if (provider === "google" && container.calendar_id) {
@@ -249,7 +341,7 @@ async function ensureContainer(
     return connection;
   }
   const next = provider === "google"
-    ? await createGoogleCalendar(accessToken)
+    ? await createGoogleCalendar(googleAuth)
     : await createNotionWorkspace(accessToken);
   await admin
     .from("integration_connections")
@@ -258,13 +350,13 @@ async function ensureContainer(
   return { ...connection, container: next };
 }
 
-async function createGoogleCalendar(accessToken: string): Promise<JsonObject> {
-  const response = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
+async function createGoogleCalendar(googleAuth: GoogleSession | null): Promise<JsonObject> {
+  if (!googleAuth) {
+    throw new ReauthRequiredError();
+  }
+  const response = await googleAuth.fetch("https://www.googleapis.com/calendar/v3/calendars", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ summary: "Diurna" }),
   });
   if (!response.ok) {
@@ -433,6 +525,7 @@ async function pushRow(args: {
   link?: Link;
   tokens: string;
   connection: Record<string, unknown>;
+  googleAuth: GoogleSession | null;
 }): Promise<{
   externalId: string;
   containerId: string | null;
@@ -451,7 +544,11 @@ async function pushGoogle(args: {
   link?: Link;
   tokens: string;
   connection: Record<string, unknown>;
+  googleAuth: GoogleSession | null;
 }) {
+  if (!args.googleAuth) {
+    throw new ReauthRequiredError();
+  }
   const calendarId =
     ((args.connection.container as JsonObject | undefined)?.calendar_id as string | undefined) ??
     "primary";
@@ -480,43 +577,30 @@ async function pushGoogle(args: {
   let recovered = false;
   let created = false;
   let existingId = args.link?.external_id;
+  const eventUrl =
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
   if (!existingId) {
-    const get = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`,
-      { headers: { Authorization: `Bearer ${args.tokens}` } },
-    );
+    const get = await args.googleAuth.fetch(`${eventUrl}/${eventId}`);
     if (get.ok) {
       recovered = true;
       existingId = eventId;
     }
   }
   if (existingId) {
-    const patch = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${existingId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${args.tokens}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-    );
+    const patch = await args.googleAuth.fetch(`${eventUrl}/${existingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!patch.ok) {
       throw new Error(`google patch ${patch.status}`);
     }
   } else {
-    const insert = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${args.tokens}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-    );
+    const insert = await args.googleAuth.fetch(eventUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!insert.ok) {
       throw new Error(`google insert ${insert.status}`);
     }
@@ -562,6 +646,9 @@ async function pushNotion(args: {
     });
     if (!patch.ok) {
       throw new Error(`notion patch ${patch.status}`);
+    }
+    if (args.module !== "inbox_items") {
+      await replaceNotionBody(args.tokens, pageId, notionBody(args.module, args.row));
     }
   } else {
     const children = notionBody(args.module, args.row);
@@ -653,6 +740,40 @@ function notionBody(module: string, row: Record<string, unknown>) {
       rich_text: [{ type: "text", text: { content: line.slice(0, 2000) } }],
     },
   }));
+}
+
+async function replaceNotionBody(
+  token: string,
+  pageId: string,
+  children: Array<Record<string, unknown>>,
+): Promise<void> {
+  const listed = await fetch(
+    `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`,
+    { headers: notionHeaders(token) },
+  );
+  if (listed.ok) {
+    const payload = await listed.json();
+    for (const block of payload.results ?? []) {
+      if (typeof block.id !== "string") {
+        continue;
+      }
+      await fetch(`https://api.notion.com/v1/blocks/${block.id}`, {
+        method: "DELETE",
+        headers: notionHeaders(token),
+      });
+    }
+  }
+  if (children.length === 0) {
+    return;
+  }
+  const appended = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+    method: "PATCH",
+    headers: notionHeaders(token),
+    body: JSON.stringify({ children }),
+  });
+  if (!appended.ok) {
+    throw new Error(`notion body ${appended.status}`);
+  }
 }
 
 async function findNotionPage(

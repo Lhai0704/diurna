@@ -423,7 +423,7 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
             VerticalDivider(
               width: 1,
               color: widget.retro
-                  ? WindowsRetroColors.shadow
+                  ? DesktopChrome.of(context).border
                   : Theme.of(context).colorScheme.outlineVariant,
             ),
             Expanded(child: _buildEditor(items)),
@@ -435,7 +435,7 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
         return RetroBevel(
           kind: RetroBevelKind.sunken,
           depth: 2,
-          color: WindowsRetroColors.content,
+          color: DesktopChrome.of(context).content,
           child: content,
         );
       },
@@ -467,20 +467,17 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
             onTap: () => _selectMemo(memo),
           );
         }
+        final chrome = DesktopChrome.of(context);
         return Material(
           key: ValueKey(memo.id),
-          color: selected
-              ? WindowsRetroColors.activeBlue
-              : WindowsRetroColors.content,
+          color: selected ? chrome.accent : chrome.content,
           child: InkWell(
             onTap: () => _selectMemo(memo),
             child: Container(
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              decoration: const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: WindowsRetroColors.grid),
-                ),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: chrome.grid)),
               ),
               alignment: Alignment.centerLeft,
               child: Text(
@@ -488,9 +485,7 @@ class _MemoBoardState extends ConsumerState<MemoBoard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: selected
-                      ? WindowsRetroColors.selectedText
-                      : WindowsRetroColors.text,
+                  color: selected ? chrome.selectedText : chrome.text,
                 ),
               ),
             ),

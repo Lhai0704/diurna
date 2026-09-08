@@ -26,20 +26,21 @@ class IntegrationRepository {
     if (client == null) {
       return const [];
     }
-    final rows = await client
-        .from('integration_connections')
-        .select()
-        .inFilter('status', ['pending', 'connected', 'error']);
+    final rows = await client.from('integration_connections').select().inFilter(
+      'status',
+      ['pending', 'connected', 'error'],
+    );
     return (rows as List)
-        .map((row) => IntegrationConnection.fromMap(Map<String, dynamic>.from(row as Map)))
+        .map(
+          (row) => IntegrationConnection.fromMap(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
         .toList();
   }
 
   Future<String> connect(String provider) async {
-    final result = await _invoke({
-      'action': 'connect',
-      'provider': provider,
-    });
+    final result = await _invoke({'action': 'connect', 'provider': provider});
     return result['authorization_url'] as String;
   }
 
@@ -50,6 +51,22 @@ class IntegrationRepository {
       'run_id': ?runId,
     });
     return SyncResult.fromMap(result);
+  }
+
+  Future<SyncResult> syncUntilComplete(String provider) async {
+    var result = await sync(provider);
+    for (
+      var attempt = 0;
+      attempt < 6 && result.errorCode == 'SYNC_IN_PROGRESS';
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      result = await sync(provider);
+    }
+    while (result.incomplete && result.runId != null) {
+      result = await sync(provider, runId: result.runId);
+    }
+    return result;
   }
 
   Future<void> disconnect(String provider) async {

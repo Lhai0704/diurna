@@ -71,25 +71,23 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage>
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (action.hasError)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    action.error.toString(),
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text('云端数据变化后约 1 分钟会自动单向导出；也可点立即同步。'),
+              ),
               _ProviderCard(
                 title: 'Notion',
                 connection: of('notion'),
-                busy: action.isLoading,
+                busy: action.isBusy('notion'),
+                error: action.errorOf('notion'),
                 showModules: true,
               ),
               const SizedBox(height: 16),
               _ProviderCard(
                 title: 'Google Calendar',
                 connection: of('google'),
-                busy: action.isLoading,
+                busy: action.isBusy('google'),
+                error: action.errorOf('google'),
                 showModules: false,
               ),
             ],
@@ -106,12 +104,14 @@ class _ProviderCard extends ConsumerWidget {
     required this.connection,
     required this.busy,
     required this.showModules,
+    this.error,
   });
 
   final String title;
   final IntegrationConnection? connection;
   final bool busy;
   final bool showModules;
+  final String? error;
 
   String get provider => title == 'Notion' ? 'notion' : 'google';
 
@@ -127,15 +127,25 @@ class _ProviderCard extends ConsumerWidget {
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(connected ? '已连接' : '未连接'),
-            if (connection?.displayName != null)
-              Text(connection!.displayName!),
+            if (connection?.displayName != null) Text(connection!.displayName!),
             if (connection?.lastSyncAt != null)
               Text(
                 '上次同步：${DateFormat('yyyy-MM-dd HH:mm').format(connection!.lastSyncAt!.toLocal())}',
               ),
             if (connected)
               Text('结果：${_statusLabel(connection?.lastSyncStatus)}'),
-            if (connection?.lastError != null) Text(connection!.lastError!),
+            if (connection?.isReauthRequired == true)
+              Text(
+                '授权已过期，请断开后重新连接',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              )
+            else if (connection?.lastError != null)
+              Text(connection!.lastError!),
+            if (error != null)
+              Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             if (showModules && connection != null)
               ...['inbox', 'memos', 'diary'].map((key) {
                 final enabled = connection!.enabledModules[key] != false;
@@ -191,13 +201,14 @@ class _ProviderCard extends ConsumerWidget {
                     child: const Text('断开'),
                   ),
                 ],
-                if (busy) const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
-                ),
               ],
             ),
           ],

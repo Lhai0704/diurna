@@ -132,11 +132,13 @@ class SupabaseSyncRemoteDataSource implements VersionedSyncRemoteDataSource {
           .toList();
       final ids = <String>{};
       for (final row in rows) {
+        final revision = _jsonInt(row['revision']);
         if (row['user_id'] != userId ||
-            row['revision'] is! int ||
+            revision == null ||
             !ids.add(row['id'] as String)) {
           throw const DiurnaException('SYNC_FAILED', 'Invalid snapshot row');
         }
+        row['revision'] = revision;
       }
       return rows;
     }
@@ -146,7 +148,7 @@ class SupabaseSyncRemoteDataSource implements VersionedSyncRemoteDataSource {
       calendarEvents: rows('calendar_events'),
       diaryEntries: rows('diary_entries'),
       memos: rows('memos'),
-      generation: raw['generation'] as int,
+      generation: _jsonInt(raw['generation']) ?? 0,
     );
   }
 
@@ -182,4 +184,17 @@ class SupabaseSyncRemoteDataSource implements VersionedSyncRemoteDataSource {
     if (_channel != null) await _client.removeChannel(_channel!);
     await _events?.close();
   }
+}
+
+int? _jsonInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  if (value is String) {
+    return int.tryParse(value);
+  }
+  return null;
 }

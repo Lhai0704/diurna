@@ -33,11 +33,16 @@ export async function writeTokenBundle(
   `;
 }
 
-export async function readTokenBundle(
+export type StoredCredential = {
+  bundle: TokenBundle;
+  accessExpiresAt: Date | null;
+};
+
+export async function readCredential(
   connectionId: string,
-): Promise<TokenBundle | null> {
+): Promise<StoredCredential | null> {
   const rows = await db()`
-    select token_bundle_cipher, token_bundle_nonce
+    select token_bundle_cipher, token_bundle_nonce, access_expires_at
     from integrations.credentials
     where connection_id = ${connectionId}
     limit 1
@@ -45,13 +50,23 @@ export async function readTokenBundle(
   if (rows.length === 0) {
     return null;
   }
-  return decryptTokenBundle(
-    {
-      cipher: rows[0].token_bundle_cipher as string,
-      nonce: rows[0].token_bundle_nonce as Uint8Array,
-    },
-    tokenKey(),
-  );
+  const expires = rows[0].access_expires_at;
+  return {
+    bundle: await decryptTokenBundle(
+      {
+        cipher: rows[0].token_bundle_cipher as string,
+        nonce: rows[0].token_bundle_nonce as Uint8Array,
+      },
+      tokenKey(),
+    ),
+    accessExpiresAt: expires ? new Date(expires as string | Date) : null,
+  };
+}
+
+export async function readTokenBundle(
+  connectionId: string,
+): Promise<TokenBundle | null> {
+  return (await readCredential(connectionId))?.bundle ?? null;
 }
 
 export async function deleteCredentials(connectionId: string): Promise<void> {

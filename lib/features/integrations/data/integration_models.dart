@@ -10,6 +10,7 @@ class IntegrationConnection {
     this.lastError,
     this.lastSyncSummary = const {},
     this.container = const {},
+    this.lastSeenGeneration,
   });
 
   final String id;
@@ -22,8 +23,26 @@ class IntegrationConnection {
   final String? lastError;
   final Map<String, dynamic> lastSyncSummary;
   final Map<String, dynamic> container;
+  final int? lastSeenGeneration;
 
   bool get isConnected => status == 'connected';
+
+  bool get isReauthRequired =>
+      lastError == 'REAUTH_REQUIRED' ||
+      lastSyncStatus == 'failed' && lastError == 'REAUTH_REQUIRED';
+
+  bool get needsRetry =>
+      lastSyncStatus == 'partial' ||
+      lastSyncStatus == 'failed' ||
+      lastSyncStatus == 'pending';
+
+  bool needsExport(int generation) {
+    if (!isConnected || isReauthRequired) {
+      return false;
+    }
+    final seen = lastSeenGeneration;
+    return seen == null || seen < generation;
+  }
 
   factory IntegrationConnection.fromMap(Map<String, dynamic> map) {
     return IntegrationConnection(
@@ -42,8 +61,24 @@ class IntegrationConnection {
       lastSyncSummary: Map<String, dynamic>.from(
         map['last_sync_summary'] as Map? ?? const {},
       ),
-      container: Map<String, dynamic>.from(map['container'] as Map? ?? const {}),
+      container: Map<String, dynamic>.from(
+        map['container'] as Map? ?? const {},
+      ),
+      lastSeenGeneration: _asInt(map['last_seen_generation']),
     );
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 }
 
@@ -67,6 +102,8 @@ class SyncResult {
   final List<dynamic> failures;
   final String? errorCode;
   final String? errorMessage;
+
+  bool get isReauthRequired => errorCode == 'REAUTH_REQUIRED';
 
   factory SyncResult.fromMap(Map<String, dynamic> map) {
     final error = map['error'];

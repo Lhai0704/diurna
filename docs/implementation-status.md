@@ -1,12 +1,26 @@
 # Implementation verification
 
+## Settings and visual styles — 2026-09-08
+
+Authenticated clients open **设置** from the diary-panel gear on the four-panel desktop, or from the inbox header in Web style. The page holds theme choice and **外部连接**.
+
+Themes:
+
+- **复古**: existing Win32-like four-panel desktop.
+- **现代风格**: the same four-panel layout with slate headers, rounded hairline panels and a cool workspace.
+- **Web 风格**: Material navigation (the former Flutter-native pages). A stored `material` preference is read as Web style.
+
+Windows defaults to 复古; Web and iOS default to Web 风格. The choice is local (`shared_preferences`), not synced. Wide Web can use the four-panel desktop when 复古 or 现代风格 is selected.
+
+Still not certified: live visual QA on iOS, and Web theme switching on a phone-sized viewport.
+
 ## External integrations — 2026-09-08
 
 Manual one-way Notion and Google Calendar export is in the working tree: Flutter **外部连接** UI, Edge Functions `integrations` and `integrations-oauth-callback`, additive SQL `20260908120000_add_external_integrations.sql`, and isolated SQL tests. Protocol v2 objects were not rewritten. Flutter does not read provider tokens.
 
 Live project `diurna` (`yuhnjgflxieiewzdodoa`): historical migrations were recorded as applied without re-executing `20260711` SQL; only the integrations migration was applied. Both functions are deployed (`integrations` JWT on, OAuth callback JWT off). Operator secrets were set in the Dashboard (values not in git).
 
-Windows Release client: the authenticated user connected Notion and Google Calendar, ran **立即同步** on both, and confirmed the remote `Diurna` Notion page/databases and Google `Diurna` calendar. This commit deploys the Web client via Cloudflare Pages (`/settings/integrations` from the inbox header).
+Windows Release client: the authenticated user connected Notion and Google Calendar, ran **立即同步** on both, and confirmed the remote `Diurna` Notion page/databases and Google `Diurna` calendar. This commit deploys the Web client via Cloudflare Pages (**设置** → **外部连接**).
 
 Still not certified:
 

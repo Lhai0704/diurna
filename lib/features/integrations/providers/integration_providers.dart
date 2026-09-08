@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:diurna/core/sync/sync_providers.dart';
+import 'package:diurna/core/sync/sync_service.dart';
 import 'package:diurna/features/auth/data/auth_repository.dart';
+import 'package:diurna/features/integrations/data/external_export_scheduler.dart';
 import 'package:diurna/features/integrations/data/integration_models.dart';
 import 'package:diurna/features/integrations/data/integration_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,23 +15,70 @@ final integrationConnectionsProvider =
       return ref.watch(integrationRepositoryProvider).listConnections();
     });
 
-class IntegrationController extends Notifier<AsyncValue<void>> {
+class IntegrationActionState {
+  const IntegrationActionState({
+    this.busyProviders = const {},
+    this.errors = const {},
+  });
+
+  final Set<String> busyProviders;
+  final Map<String, String> errors;
+
+  bool isBusy(String provider) => busyProviders.contains(provider);
+
+  String? errorOf(String provider) => errors[provider];
+
+  IntegrationActionState start(String provider) {
+    return IntegrationActionState(
+      busyProviders: {...busyProviders, provider},
+      errors: {...errors}..remove(provider),
+    );
+  }
+
+  IntegrationActionState finish(String provider) {
+    return IntegrationActionState(
+      busyProviders: {...busyProviders}..remove(provider),
+      errors: {...errors}..remove(provider),
+    );
+  }
+
+  IntegrationActionState fail(String provider, Object error) {
+    return IntegrationActionState(
+      busyProviders: {...busyProviders}..remove(provider),
+      errors: {...errors, provider: error.toString()},
+    );
+  }
+}
+
+class IntegrationController extends Notifier<IntegrationActionState> {
   @override
-  AsyncValue<void> build() => const AsyncData(null);
+  IntegrationActionState build() => const IntegrationActionState();
 
   IntegrationRepository get _repo => ref.read(integrationRepositoryProvider);
 
-  Future<void> connect(String provider) async {
-    state = const AsyncLoading();
+  Future<void> _run(String provider, Future<void> Function() action) async {
+    state = state.start(provider);
     try {
+      await action();
+      if (!ref.mounted) {
+        return;
+      }
+      state = state.finish(provider);
+    } on Object catch (error) {
+      if (!ref.mounted) {
+        return;
+      }
+      state = state.fail(provider, error);
+    }
+  }
+
+  Future<void> connect(String provider) async {
+    await _run(provider, () async {
       final url = await _repo.connect(provider);
       final uri = Uri.parse(url);
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-      state = const AsyncData(null);
       unawaited(_pollUntilConnected(provider));
-    } on Object catch (error, stack) {
-      state = AsyncError(error, stack);
-    }
+    });
   }
 
   Future<void> _pollUntilConnected(String provider) async {
@@ -46,30 +96,19 @@ class IntegrationController extends Notifier<AsyncValue<void>> {
   }
 
   Future<SyncResult?> sync(String provider) async {
-    state = const AsyncLoading();
-    try {
-      var result = await _repo.sync(provider);
-      while (result.incomplete && result.runId != null) {
-        result = await _repo.sync(provider, runId: result.runId);
-      }
+    SyncResult? result;
+    await _run(provider, () async {
+      result = await _repo.syncUntilComplete(provider);
       ref.invalidate(integrationConnectionsProvider);
-      state = const AsyncData(null);
-      return result;
-    } on Object catch (error, stack) {
-      state = AsyncError(error, stack);
-      return null;
-    }
+    });
+    return result;
   }
 
   Future<void> disconnect(String provider) async {
-    state = const AsyncLoading();
-    try {
+    await _run(provider, () async {
       await _repo.disconnect(provider);
       ref.invalidate(integrationConnectionsProvider);
-      state = const AsyncData(null);
-    } on Object catch (error, stack) {
-      state = AsyncError(error, stack);
-    }
+    });
   }
 
   Future<void> updateModules(
@@ -85,6 +124,59 @@ class IntegrationController extends Notifier<AsyncValue<void>> {
 }
 
 final integrationControllerProvider =
-    NotifierProvider<IntegrationController, AsyncValue<void>>(
+    NotifierProvider<IntegrationController, IntegrationActionState>(
       IntegrationController.new,
     );
+
+final externalExportSchedulerProvider = Provider<ExternalExportScheduler?>((
+  ref,
+) {
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) {
+    return null;
+  }
+  final scheduler = ExternalExportScheduler(
+    delay: ExternalExportScheduler.defaultDelay,
+    loadConnections: () {
+      if (!ref.mounted) {
+        return Future.value(const <IntegrationConnection>[]);
+      }
+      return ref.read(integrationRepositoryProvider).listConnections();
+    },
+    export: (provider) {
+      if (!ref.mounted) {
+        return Future.value(
+          const SyncResult(ok: false, status: 'failed', incomplete: false),
+        );
+      }
+      return ref
+          .read(integrationRepositoryProvider)
+          .syncUntilComplete(provider);
+    },
+    onExported: () {
+      if (ref.mounted) {
+        ref.invalidate(integrationConnectionsProvider);
+      }
+    },
+  );
+  ref.onDispose(scheduler.dispose);
+
+  void consider() {
+    final snapshot = ref.read(syncSnapshotProvider).asData?.value;
+    final connections = ref.read(integrationConnectionsProvider).asData?.value;
+    if (snapshot == null || connections == null) {
+      return;
+    }
+    scheduler.consider(
+      generation: snapshot.generation,
+      pendingCount: snapshot.pendingCount,
+      idle: snapshot.phase == SyncPhase.idle,
+      connections: connections,
+    );
+  }
+
+  ref.listen(syncSnapshotProvider, (_, _) => consider());
+  ref.listen(integrationConnectionsProvider, (_, _) => consider());
+  consider();
+  return scheduler;
+});

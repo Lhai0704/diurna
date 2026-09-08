@@ -1,25 +1,7 @@
+import 'package:diurna/app/desktop_chrome.dart';
 import 'package:flutter/material.dart';
 
-/// Design tokens for the Windows-only desktop surface.
-///
-/// The palette deliberately softens the original Win32 system colors while
-/// keeping the familiar gray surfaces, navy selection, and beveled controls.
-abstract final class WindowsRetroColors {
-  static const desktop = Color(0xFFC6C6C6);
-  static const panel = Color(0xFFD4D0C8);
-  static const content = Color(0xFFFFFFFF);
-  static const contentMuted = Color(0xFFF5F5F3);
-  static const highlight = Color(0xFFFFFFFF);
-  static const lightBorder = Color(0xFFE8E8E8);
-  static const shadow = Color(0xFF808080);
-  static const darkShadow = Color(0xFF404040);
-  static const grid = Color(0xFFB8B8B8);
-  static const text = Color(0xFF202020);
-  static const secondaryText = Color(0xFF555555);
-  static const activeBlue = Color(0xFF173F8A);
-  static const selection = Color(0xFFDCE7F6);
-  static const selectedText = Color(0xFFFFFFFF);
-}
+export 'package:diurna/app/desktop_chrome.dart';
 
 abstract final class WindowsRetroMetrics {
   static const space2 = 2.0;
@@ -34,29 +16,37 @@ abstract final class WindowsRetroMetrics {
 }
 
 ThemeData buildWindowsRetroTheme(ThemeData base) {
+  return buildDesktopTheme(base, DesktopChrome.retro);
+}
+
+ThemeData buildModernDesktopTheme(ThemeData base) {
+  return buildDesktopTheme(base, DesktopChrome.modern);
+}
+
+ThemeData buildDesktopTheme(ThemeData base, DesktopChrome chrome) {
   final colorScheme = base.colorScheme.copyWith(
-    primary: WindowsRetroColors.activeBlue,
-    onPrimary: WindowsRetroColors.selectedText,
-    primaryContainer: WindowsRetroColors.selection,
-    onPrimaryContainer: WindowsRetroColors.text,
-    secondary: WindowsRetroColors.activeBlue,
-    onSecondary: WindowsRetroColors.selectedText,
-    secondaryContainer: WindowsRetroColors.selection,
-    onSecondaryContainer: WindowsRetroColors.text,
-    tertiary: WindowsRetroColors.activeBlue,
-    onTertiary: WindowsRetroColors.selectedText,
-    tertiaryContainer: WindowsRetroColors.selection,
-    onTertiaryContainer: WindowsRetroColors.text,
-    surface: WindowsRetroColors.panel,
-    onSurface: WindowsRetroColors.text,
-    onSurfaceVariant: WindowsRetroColors.secondaryText,
+    primary: chrome.accent,
+    onPrimary: chrome.selectedText,
+    primaryContainer: chrome.selection,
+    onPrimaryContainer: chrome.text,
+    secondary: chrome.accent,
+    onSecondary: chrome.selectedText,
+    secondaryContainer: chrome.selection,
+    onSecondaryContainer: chrome.text,
+    tertiary: chrome.accent,
+    onTertiary: chrome.selectedText,
+    tertiaryContainer: chrome.selection,
+    onTertiaryContainer: chrome.text,
+    surface: chrome.panel,
+    onSurface: chrome.text,
+    onSurfaceVariant: chrome.secondaryText,
     surfaceTint: Colors.transparent,
-    surfaceContainerLowest: WindowsRetroColors.content,
-    surfaceContainerLow: WindowsRetroColors.contentMuted,
-    surfaceContainer: WindowsRetroColors.panel,
-    surfaceContainerHigh: WindowsRetroColors.desktop,
-    outline: WindowsRetroColors.shadow,
-    outlineVariant: WindowsRetroColors.grid,
+    surfaceContainerLowest: chrome.content,
+    surfaceContainerLow: chrome.contentMuted,
+    surfaceContainer: chrome.panel,
+    surfaceContainerHigh: chrome.desktop,
+    outline: chrome.border,
+    outlineVariant: chrome.grid,
   );
 
   TextStyle? compact(TextStyle? style, double size, {FontWeight? weight}) {
@@ -64,7 +54,7 @@ ThemeData buildWindowsRetroTheme(ThemeData base) {
       fontSize: size,
       fontWeight: weight,
       height: 1.3,
-      color: WindowsRetroColors.text,
+      color: chrome.text,
       letterSpacing: 0,
     );
   }
@@ -82,48 +72,54 @@ ThemeData buildWindowsRetroTheme(ThemeData base) {
     bodySmall: compact(
       base.textTheme.bodySmall,
       12,
-    )?.copyWith(color: WindowsRetroColors.secondaryText),
+    )?.copyWith(color: chrome.secondaryText),
     labelLarge: compact(base.textTheme.labelLarge, 13, weight: FontWeight.w500),
     labelMedium: compact(
       base.textTheme.labelMedium,
       12,
-    )?.copyWith(color: WindowsRetroColors.secondaryText),
+    )?.copyWith(color: chrome.secondaryText),
     labelSmall: compact(
       base.textTheme.labelSmall,
       11,
-    )?.copyWith(color: WindowsRetroColors.secondaryText),
+    )?.copyWith(color: chrome.secondaryText),
   );
 
-  const squareShape = RoundedRectangleBorder();
+  final shape = RoundedRectangleBorder(
+    borderRadius: chrome.controlBorderRadius,
+  );
+  final inputBorder = OutlineInputBorder(
+    borderRadius: chrome.controlBorderRadius,
+    borderSide: BorderSide(color: chrome.border),
+  );
   return base.copyWith(
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: WindowsRetroColors.desktop,
-    canvasColor: WindowsRetroColors.content,
+    scaffoldBackgroundColor: chrome.desktop,
+    canvasColor: chrome.content,
     textTheme: textTheme,
     primaryTextTheme: textTheme,
     visualDensity: VisualDensity.compact,
     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    splashFactory: NoSplash.splashFactory,
-    hoverColor: WindowsRetroColors.selection,
+    splashFactory: chrome.bevel
+        ? NoSplash.splashFactory
+        : InkRipple.splashFactory,
+    hoverColor: chrome.selection,
     highlightColor: Colors.transparent,
-    dividerColor: WindowsRetroColors.shadow,
-    dividerTheme: const DividerThemeData(
-      color: WindowsRetroColors.shadow,
+    dividerColor: chrome.border,
+    dividerTheme: DividerThemeData(
+      color: chrome.border,
       thickness: 1,
       space: 1,
     ),
-    iconTheme: const IconThemeData(color: WindowsRetroColors.text, size: 18),
+    iconTheme: IconThemeData(color: chrome.text, size: 18),
     iconButtonTheme: IconButtonThemeData(
       style: ButtonStyle(
         minimumSize: const WidgetStatePropertyAll(Size.square(26)),
         maximumSize: const WidgetStatePropertyAll(Size.square(28)),
         padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: const WidgetStatePropertyAll(squareShape),
-        foregroundColor: const WidgetStatePropertyAll(WindowsRetroColors.text),
-        overlayColor: const WidgetStatePropertyAll(
-          WindowsRetroColors.selection,
-        ),
+        shape: WidgetStatePropertyAll(shape),
+        foregroundColor: WidgetStatePropertyAll(chrome.text),
+        overlayColor: WidgetStatePropertyAll(chrome.selection),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -133,15 +129,11 @@ ThemeData buildWindowsRetroTheme(ThemeData base) {
           EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: const WidgetStatePropertyAll(squareShape),
-        foregroundColor: const WidgetStatePropertyAll(WindowsRetroColors.text),
-        backgroundColor: const WidgetStatePropertyAll(WindowsRetroColors.panel),
-        side: const WidgetStatePropertyAll(
-          BorderSide(color: WindowsRetroColors.shadow),
-        ),
-        overlayColor: const WidgetStatePropertyAll(
-          WindowsRetroColors.selection,
-        ),
+        shape: WidgetStatePropertyAll(shape),
+        foregroundColor: WidgetStatePropertyAll(chrome.text),
+        backgroundColor: WidgetStatePropertyAll(chrome.panel),
+        side: WidgetStatePropertyAll(BorderSide(color: chrome.border)),
+        overlayColor: WidgetStatePropertyAll(chrome.selection),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -151,78 +143,81 @@ ThemeData buildWindowsRetroTheme(ThemeData base) {
           EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: const WidgetStatePropertyAll(squareShape),
-        backgroundColor: const WidgetStatePropertyAll(
-          WindowsRetroColors.activeBlue,
-        ),
-        foregroundColor: const WidgetStatePropertyAll(
-          WindowsRetroColors.selectedText,
-        ),
+        shape: WidgetStatePropertyAll(shape),
+        backgroundColor: WidgetStatePropertyAll(chrome.accent),
+        foregroundColor: WidgetStatePropertyAll(chrome.selectedText),
       ),
     ),
-    inputDecorationTheme: const InputDecorationTheme(
+    inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: WindowsRetroColors.content,
+      fillColor: chrome.content,
       isDense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: WindowsRetroColors.shadow),
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      border: inputBorder,
+      enabledBorder: inputBorder,
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: WindowsRetroColors.activeBlue),
+        borderRadius: chrome.controlBorderRadius,
+        borderSide: BorderSide(color: chrome.accent),
       ),
     ),
-    cardTheme: const CardThemeData(
-      color: WindowsRetroColors.content,
+    cardTheme: CardThemeData(
+      color: chrome.content,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: squareShape,
+      shape: shape,
     ),
-    dialogTheme: const DialogThemeData(
-      backgroundColor: WindowsRetroColors.panel,
-      elevation: 4,
-      shape: squareShape,
+    dialogTheme: DialogThemeData(
+      backgroundColor: chrome.panel,
+      elevation: chrome.bevel ? 4 : 8,
+      shape: RoundedRectangleBorder(borderRadius: chrome.panelBorderRadius),
     ),
-    popupMenuTheme: const PopupMenuThemeData(
-      color: WindowsRetroColors.panel,
-      elevation: 4,
-      menuPadding: EdgeInsets.all(2),
-      shape: squareShape,
-      textStyle: TextStyle(fontSize: 12, color: WindowsRetroColors.text),
+    popupMenuTheme: PopupMenuThemeData(
+      color: chrome.panel,
+      elevation: chrome.bevel ? 4 : 8,
+      menuPadding: const EdgeInsets.all(2),
+      shape: shape,
+      textStyle: TextStyle(fontSize: 12, color: chrome.text),
     ),
     checkboxTheme: CheckboxThemeData(
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
-      shape: const RoundedRectangleBorder(),
-      side: const BorderSide(color: WindowsRetroColors.darkShadow),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(chrome.bevel ? 0 : 4),
+      ),
+      side: BorderSide(color: chrome.darkShadow),
       fillColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
-            ? WindowsRetroColors.activeBlue
-            : WindowsRetroColors.content,
+            ? chrome.accent
+            : chrome.content,
       ),
-      checkColor: const WidgetStatePropertyAll(WindowsRetroColors.selectedText),
+      checkColor: WidgetStatePropertyAll(chrome.selectedText),
     ),
-    textSelectionTheme: const TextSelectionThemeData(
-      cursorColor: WindowsRetroColors.activeBlue,
-      selectionColor: WindowsRetroColors.selection,
-      selectionHandleColor: WindowsRetroColors.activeBlue,
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: chrome.accent,
+      selectionColor: chrome.selection,
+      selectionHandleColor: chrome.accent,
     ),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: WindowsRetroColors.activeBlue,
-      linearTrackColor: WindowsRetroColors.contentMuted,
-      circularTrackColor: WindowsRetroColors.contentMuted,
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: chrome.accent,
+      linearTrackColor: chrome.contentMuted,
+      circularTrackColor: chrome.contentMuted,
     ),
     tooltipTheme: TooltipThemeData(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFFE1),
-        border: Border.all(color: WindowsRetroColors.darkShadow),
+      decoration: chrome.bevel
+          ? BoxDecoration(
+              color: const Color(0xFFFFFFE1),
+              border: Border.all(color: chrome.darkShadow),
+            )
+          : BoxDecoration(
+              color: chrome.header,
+              borderRadius: chrome.controlBorderRadius,
+            ),
+      textStyle: textTheme.labelSmall?.copyWith(
+        color: chrome.bevel ? chrome.text : chrome.headerText,
       ),
-      textStyle: textTheme.labelSmall?.copyWith(color: WindowsRetroColors.text),
       waitDuration: const Duration(milliseconds: 500),
     ),
+    extensions: [chrome],
   );
 }
 
@@ -232,7 +227,7 @@ class RetroBevel extends StatelessWidget {
   const RetroBevel({
     required this.child,
     this.kind = RetroBevelKind.raised,
-    this.color = WindowsRetroColors.panel,
+    this.color,
     this.depth = 1,
     this.padding = EdgeInsets.zero,
     super.key,
@@ -240,22 +235,18 @@ class RetroBevel extends StatelessWidget {
 
   final Widget child;
   final RetroBevelKind kind;
-  final Color color;
+  final Color? color;
   final int depth;
   final EdgeInsetsGeometry padding;
 
-  Border _border({required bool inner}) {
+  Border _border(DesktopChrome chrome, {required bool inner}) {
     final raised = kind == RetroBevelKind.raised;
     final topLeft = raised
-        ? (inner
-              ? WindowsRetroColors.lightBorder
-              : WindowsRetroColors.highlight)
-        : (inner ? WindowsRetroColors.darkShadow : WindowsRetroColors.shadow);
+        ? (inner ? chrome.lightBorder : chrome.highlight)
+        : (inner ? chrome.darkShadow : chrome.shadow);
     final bottomRight = raised
-        ? (inner ? WindowsRetroColors.shadow : WindowsRetroColors.darkShadow)
-        : (inner
-              ? WindowsRetroColors.highlight
-              : WindowsRetroColors.lightBorder);
+        ? (inner ? chrome.shadow : chrome.darkShadow)
+        : (inner ? chrome.highlight : chrome.lightBorder);
     return Border(
       left: BorderSide(color: topLeft),
       top: BorderSide(color: topLeft),
@@ -266,15 +257,47 @@ class RetroBevel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = DesktopChrome.of(context);
+    final fill = color ?? chrome.panel;
+    if (!chrome.bevel) {
+      final sunken = kind == RetroBevelKind.sunken;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: chrome.controlBorderRadius,
+          border: Border.all(color: chrome.border),
+          boxShadow: sunken
+              ? null
+              : const [
+                  BoxShadow(
+                    color: Color(0x140F172A),
+                    blurRadius: 2,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+        ),
+        child: Padding(
+          padding: padding.add(const EdgeInsets.all(1)),
+          child: child,
+        ),
+      );
+    }
+
     Widget result = Padding(padding: padding, child: child);
     if (depth > 1) {
       result = DecoratedBox(
-        decoration: BoxDecoration(color: color, border: _border(inner: true)),
+        decoration: BoxDecoration(
+          color: fill,
+          border: _border(chrome, inner: true),
+        ),
         child: Padding(padding: const EdgeInsets.all(1), child: result),
       );
     }
     return DecoratedBox(
-      decoration: BoxDecoration(color: color, border: _border(inner: false)),
+      decoration: BoxDecoration(
+        color: fill,
+        border: _border(chrome, inner: false),
+      ),
       child: Padding(padding: const EdgeInsets.all(1), child: result),
     );
   }
@@ -287,8 +310,23 @@ class RetroPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = DesktopChrome.of(context);
+    if (!chrome.bevel) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: chrome.panel,
+          borderRadius: chrome.panelBorderRadius,
+          border: Border.all(color: chrome.border),
+          boxShadow: chrome.panelShadow,
+        ),
+        child: ClipRRect(
+          borderRadius: chrome.panelBorderRadius,
+          child: ColoredBox(color: chrome.panel, child: child),
+        ),
+      );
+    }
     return RetroBevel(
-      child: ColoredBox(color: WindowsRetroColors.panel, child: child),
+      child: ColoredBox(color: chrome.panel, child: child),
     );
   }
 }
@@ -301,10 +339,11 @@ class RetroSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = DesktopChrome.of(context);
     return SizedBox(
       height: WindowsRetroMetrics.panelHeaderHeight,
       child: ColoredBox(
-        color: WindowsRetroColors.activeBlue,
+        color: chrome.header,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
           child: Row(
@@ -314,9 +353,9 @@ class RetroSectionHeader extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: WindowsRetroColors.selectedText,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(color: chrome.headerText),
                 ),
               ),
               ?trailing,
@@ -355,12 +394,13 @@ class _RetroToolbarButtonState extends State<RetroToolbarButton> {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = DesktopChrome.of(context);
     final enabled = widget.onPressed != null;
     final showBevel = widget.alwaysRaised || _hovered || _focused || _pressed;
-    final chrome = showBevel
+    final buttonChrome = showBevel
         ? RetroBevel(
             kind: _pressed ? RetroBevelKind.sunken : RetroBevelKind.raised,
-            color: WindowsRetroColors.panel,
+            color: chrome.panel,
             child: Center(child: widget.icon),
           )
         : Center(child: widget.icon);
@@ -386,11 +426,9 @@ class _RetroToolbarButtonState extends State<RetroToolbarButton> {
             child: IconTheme.merge(
               data: IconThemeData(
                 size: 16,
-                color: enabled
-                    ? WindowsRetroColors.text
-                    : WindowsRetroColors.shadow,
+                color: enabled ? chrome.text : chrome.shadow,
               ),
-              child: chrome,
+              child: buttonChrome,
             ),
           ),
         ),
@@ -420,6 +458,7 @@ class _RetroPushButtonState extends State<RetroPushButton> {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = DesktopChrome.of(context);
     final enabled = widget.onPressed != null;
     return IntrinsicWidth(
       child: ConstrainedBox(
@@ -437,20 +476,16 @@ class _RetroPushButtonState extends State<RetroPushButton> {
                 : null,
             child: RetroBevel(
               kind: _pressed ? RetroBevelKind.sunken : RetroBevelKind.raised,
-              color: WindowsRetroColors.panel,
+              color: chrome.panel,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: DefaultTextStyle.merge(
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: enabled
-                      ? WindowsRetroColors.text
-                      : WindowsRetroColors.shadow,
+                  color: enabled ? chrome.text : chrome.shadow,
                 ),
                 child: IconTheme.merge(
                   data: IconThemeData(
                     size: 15,
-                    color: enabled
-                        ? WindowsRetroColors.text
-                        : WindowsRetroColors.shadow,
+                    color: enabled ? chrome.text : chrome.shadow,
                   ),
                   child: Center(child: widget.child),
                 ),

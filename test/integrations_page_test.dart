@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:diurna/features/integrations/data/integration_models.dart';
 import 'package:diurna/features/integrations/data/integration_repository.dart';
 import 'package:diurna/features/integrations/presentation/integrations_page.dart';
@@ -6,15 +8,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeRepo extends IntegrationRepository {
-  _FakeRepo(this.connections) : super.unavailable();
+  _FakeRepo(this.connections, {this.syncGate}) : super.unavailable();
 
   final List<IntegrationConnection> connections;
+  final Completer<void>? syncGate;
+  final List<String> synced = [];
 
   @override
   bool get isAvailable => true;
 
   @override
   Future<List<IntegrationConnection>> listConnections() async => connections;
+
+  @override
+  Future<SyncResult> sync(String provider, {String? runId}) async {
+    synced.add(provider);
+    final gate = syncGate;
+    if (gate != null) {
+      await gate.future;
+    }
+    return const SyncResult(ok: true, status: 'success', incomplete: false);
+  }
+}
+
+IntegrationConnection _connected(String provider) {
+  return IntegrationConnection(
+    id: provider,
+    provider: provider,
+    status: 'connected',
+    lastSyncStatus: 'success',
+    enabledModules: const {'inbox': true, 'memos': true, 'diary': true},
+    displayName: provider,
+    lastSyncAt: DateTime.utc(2026, 9, 8, 5, 42),
+  );
 }
 
 void main() {
@@ -66,5 +92,39 @@ void main() {
     expect(find.text('立即同步'), findsOneWidget);
     expect(find.text('断开'), findsOneWidget);
     expect(find.text('结果：同步成功'), findsOneWidget);
+  });
+
+  testWidgets('Notion sync busy state does not disable Google Calendar', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final repo = _FakeRepo([
+      _connected('notion'),
+      _connected('google'),
+    ], syncGate: gate);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [integrationRepositoryProvider.overrideWithValue(repo)],
+        child: const MaterialApp(home: IntegrationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('立即同步').first);
+    await tester.pump();
+
+    final buttons = tester
+        .widgetList<FilledButton>(find.widgetWithText(FilledButton, '立即同步'))
+        .toList();
+    expect(buttons, hasLength(2));
+    expect(buttons[0].onPressed, isNull);
+    expect(buttons[1].onPressed, isNotNull);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(repo.synced, ['notion']);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }

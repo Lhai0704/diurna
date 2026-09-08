@@ -8,7 +8,6 @@ import 'package:diurna/features/calendar/providers/calendar_providers.dart';
 import 'package:diurna/features/diary/data/diary_model.dart';
 import 'package:diurna/features/diary/providers/diary_providers.dart';
 import 'package:diurna/features/inbox/presentation/inbox_board.dart';
-import 'package:diurna/features/integrations/presentation/integrations_page.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
 import 'package:diurna/features/memo/presentation/memo_page.dart';
 import 'package:diurna/shared/widgets/empty_view.dart';
@@ -16,55 +15,54 @@ import 'package:diurna/shared/widgets/loading_view.dart';
 import 'package:diurna/shared/widgets/sync_status_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class WindowsHomePage extends ConsumerWidget {
   const WindowsHomePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Theme(
-      data: buildWindowsRetroTheme(Theme.of(context)),
-      child: Scaffold(
-        body: SafeArea(
-          child: ColoredBox(
-            color: WindowsRetroColors.desktop,
-            child: Padding(
-              padding: const EdgeInsets.all(WindowsRetroMetrics.space4),
-              child: Row(
-                children: const [
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          flex: 6,
-                          child: RetroPanel(child: _ScheduleMonthPanel()),
-                        ),
-                        SizedBox(height: WindowsRetroMetrics.space4),
-                        Expanded(
-                          flex: 4,
-                          child: RetroPanel(child: MemoBoard(retro: true)),
-                        ),
-                      ],
-                    ),
+    final chrome = DesktopChrome.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: ColoredBox(
+          color: chrome.desktop,
+          child: const Padding(
+            padding: EdgeInsets.all(WindowsRetroMetrics.space4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        flex: 6,
+                        child: RetroPanel(child: _ScheduleMonthPanel()),
+                      ),
+                      SizedBox(height: WindowsRetroMetrics.space4),
+                      Expanded(
+                        flex: 4,
+                        child: RetroPanel(child: MemoBoard(retro: true)),
+                      ),
+                    ],
                   ),
-                  SizedBox(width: WindowsRetroMetrics.space4),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: RetroPanel(child: _DiaryPanel()),
-                        ),
-                        SizedBox(height: WindowsRetroMetrics.space4),
-                        Expanded(
-                          flex: 7,
-                          child: RetroPanel(child: _InboxPanel()),
-                        ),
-                      ],
-                    ),
+                ),
+                SizedBox(width: WindowsRetroMetrics.space4),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: RetroPanel(child: _DiaryPanel()),
+                      ),
+                      SizedBox(height: WindowsRetroMetrics.space4),
+                      Expanded(
+                        flex: 7,
+                        child: RetroPanel(child: _InboxPanel()),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -206,6 +204,7 @@ class _MonthSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final chrome = DesktopChrome.of(context);
     final firstDay = DateTime(month.year, month.month);
     final leadingEmptyDays = firstDay.weekday - DateTime.monday;
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
@@ -234,12 +233,12 @@ class _MonthSection extends StatelessWidget {
           ),
           Container(
             height: 24,
-            decoration: const BoxDecoration(
-              color: WindowsRetroColors.contentMuted,
+            decoration: BoxDecoration(
+              color: chrome.contentMuted,
               border: Border(
-                left: BorderSide(color: WindowsRetroColors.grid),
-                right: BorderSide(color: WindowsRetroColors.grid),
-                bottom: BorderSide(color: WindowsRetroColors.grid),
+                left: BorderSide(color: chrome.grid),
+                right: BorderSide(color: chrome.grid),
+                bottom: BorderSide(color: chrome.grid),
               ),
             ),
             child: Row(
@@ -258,10 +257,10 @@ class _MonthSection extends StatelessWidget {
             ),
           ),
           DecoratedBox(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                left: BorderSide(color: WindowsRetroColors.grid),
-                top: BorderSide(color: WindowsRetroColors.grid),
+                left: BorderSide(color: chrome.grid),
+                top: BorderSide(color: chrome.grid),
               ),
             ),
             child: GridView.builder(
@@ -299,12 +298,13 @@ class _EmptyDayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    final chrome = DesktopChrome.of(context);
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: WindowsRetroColors.contentMuted,
+        color: chrome.contentMuted,
         border: Border(
-          right: BorderSide(color: WindowsRetroColors.grid),
-          bottom: BorderSide(color: WindowsRetroColors.grid),
+          right: BorderSide(color: chrome.grid),
+          bottom: BorderSide(color: chrome.grid),
         ),
       ),
     );
@@ -326,15 +326,16 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final chrome = DesktopChrome.of(context);
     return Material(
-      color: WindowsRetroColors.content,
+      color: chrome.content,
       child: InkWell(
         onTap: () => showEventEditPage(context, initialDate: day),
         child: DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(
-              right: BorderSide(color: WindowsRetroColors.grid),
-              bottom: BorderSide(color: WindowsRetroColors.grid),
+              right: BorderSide(color: chrome.grid),
+              bottom: BorderSide(color: chrome.grid),
             ),
           ),
           child: Column(
@@ -342,18 +343,14 @@ class _DayCell extends StatelessWidget {
             children: [
               Container(
                 height: 22,
-                color: isToday
-                    ? WindowsRetroColors.activeBlue
-                    : WindowsRetroColors.contentMuted,
+                color: isToday ? chrome.accent : chrome.contentMuted,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Row(
                   children: [
                     Text(
                       '${day.day}',
                       style: theme.textTheme.labelLarge?.copyWith(
-                        color: isToday
-                            ? WindowsRetroColors.selectedText
-                            : WindowsRetroColors.text,
+                        color: isToday ? chrome.selectedText : chrome.text,
                       ),
                     ),
                     const Spacer(),
@@ -362,8 +359,8 @@ class _DayCell extends StatelessWidget {
                         '+${events.length - 5}',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: isToday
-                              ? WindowsRetroColors.selectedText
-                              : WindowsRetroColors.secondaryText,
+                              ? chrome.selectedText
+                              : chrome.secondaryText,
                         ),
                       ),
                   ],
@@ -521,13 +518,9 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
           const SyncStatusIcon(retro: true),
           const SizedBox(width: 2),
           RetroToolbarButton(
-            tooltip: '外部连接',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const IntegrationsPage(),
-              ),
-            ),
-            icon: const Icon(Icons.link),
+            tooltip: '设置',
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings_outlined),
           ),
           const SizedBox(width: 2),
           RetroPushButton(
@@ -563,7 +556,7 @@ class _DiaryPanelState extends ConsumerState<_DiaryPanel> {
                   child: RetroBevel(
                     kind: RetroBevelKind.sunken,
                     depth: 2,
-                    color: WindowsRetroColors.content,
+                    color: DesktopChrome.of(context).content,
                     child: TextField(
                       controller: _contentController,
                       expands: true,

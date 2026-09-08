@@ -1,4 +1,9 @@
-import { consumeOauthState, insertOauthState, writeTokenBundle } from "./credentials.ts";
+import {
+  consumeOauthState,
+  insertOauthState,
+  readTokenBundle,
+  writeTokenBundle,
+} from "./credentials.ts";
 
 const NOTION_VERSION = "2026-03-11";
 
@@ -206,9 +211,14 @@ async function persistConnection(args: {
   if (!connectionId) {
     throw new Error("connection_persist_failed");
   }
+  let refreshToken = args.refreshToken;
+  if (!refreshToken) {
+    const existing = await readTokenBundle(connectionId);
+    refreshToken = existing?.refresh_token ?? "";
+  }
   await writeTokenBundle(
     connectionId,
-    { access_token: args.accessToken, refresh_token: args.refreshToken },
+    { access_token: args.accessToken, refresh_token: refreshToken },
     args.expiresAt,
   );
 }
