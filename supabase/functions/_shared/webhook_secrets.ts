@@ -1,5 +1,10 @@
 import { db } from "./db.ts";
 import { decryptUtf8, encryptUtf8 } from "./crypto.ts";
+import {
+  generateHandshakeNonce,
+  hashHandshakeNonce,
+  type HandshakePurpose,
+} from "./handshake.ts";
 
 function tokenKey(): string {
   const key = Deno.env.get("INTEGRATION_TOKEN_KEY");
@@ -44,6 +49,44 @@ export async function loadNotionVerificationToken(): Promise<string | null> {
     );
   }
   return envToken && envToken.length > 0 ? envToken : null;
+}
+
+export async function armNotionHandshake(
+  purpose: HandshakePurpose = "initial",
+): Promise<{ setupNonce: string; expiresAt: string }> {
+  const nonce = generateHandshakeNonce();
+  const nonceHash = await hashHandshakeNonce(nonce);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  await db()`
+    insert into integrations.webhook_handshake_arms (
+      provider, purpose, nonce_hash, expires_at
+    ) values (
+      'notion', ${purpose}, ${nonceHash}, ${expiresAt}
+    )
+  `;
+  console.log("notion_handshake_armed");
+  return { setupNonce: nonce, expiresAt: expiresAt.toISOString() };
+}
+
+export async function acceptNotionHandshake(args: {
+  verificationToken: string;
+  setupNonce: string | null;
+}): Promise<"stored" | "rejected"> {
+  if (!args.setupNonce) {
+    return "rejected";
+  }
+  const hasToken = (await loadNotionVerificationToken()) != null;
+  const nonceHash = await hashHandshakeNonce(args.setupNonce);
+  const consumed = await db()`
+    select integrations.consume_handshake_arm(${nonceHash}, ${hasToken}) as result
+  `;
+  const result = consumed[0]?.result as { result?: string } | undefined;
+  if (result?.result !== "ok") {
+    return "rejected";
+  }
+  await storeNotionVerificationToken(args.verificationToken);
+  console.log("notion_verification_token_stored");
+  return "stored";
 }
 
 export async function revealNotionVerificationToken(): Promise<string | null> {

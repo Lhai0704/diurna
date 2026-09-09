@@ -12,16 +12,46 @@ type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
 // source, then enqueue the same notion_page work as webhooks. Cadence is the
 // worker's 15-minute repair interval for active/degraded connections.
 const OVERLAP_MS = 5 * 60 * 1000;
-const MAX_PAGES_PER_SOURCE = 3;
+export const MAX_PAGES_PER_SOURCE = 3;
+
+export type RepairSourceState = {
+  sinceIso: string;
+  cursor: string | null;
+};
+
+export type RepairState = Record<string, RepairSourceState>;
+
+export function mergeRepairState(args: {
+  previous: RepairState;
+  sourceId: string;
+  sinceIso: string;
+  hasMore: boolean;
+  nextCursor: string | null;
+}): RepairState {
+  const next = { ...args.previous };
+  if (args.hasMore && args.nextCursor) {
+    next[args.sourceId] = { sinceIso: args.sinceIso, cursor: args.nextCursor };
+  } else {
+    delete next[args.sourceId];
+  }
+  return next;
+}
+
+export function shouldAdvanceRepairWatermark(state: RepairState): boolean {
+  return Object.keys(state).length === 0;
+}
 
 async function queryDataSource(args: {
   token: string;
   dataSourceId: string;
   sinceIso: string;
+  startCursor?: string | null;
   fetchImpl: NotionFetch;
-}): Promise<string[]> {
+}): Promise<{ ids: string[]; hasMore: boolean; nextCursor: string | null }> {
   const ids: string[] = [];
-  let cursor: string | null = null;
+  let cursor: string | null = args.startCursor ?? null;
+  let hasMore = false;
+  let nextCursor: string | null = null;
   for (let page = 0; page < MAX_PAGES_PER_SOURCE; page++) {
     const response = await args.fetchImpl(
       `https://api.notion.com/v1/data_sources/${args.dataSourceId}/query`,
@@ -49,12 +79,14 @@ async function queryDataSource(args: {
     for (const row of payload.results ?? []) {
       if (typeof row.id === "string") ids.push(row.id);
     }
-    if (!payload.has_more || !payload.next_cursor) {
+    hasMore = Boolean(payload.has_more && payload.next_cursor);
+    nextCursor = payload.next_cursor ?? null;
+    if (!hasMore) {
       break;
     }
-    cursor = payload.next_cursor;
+    cursor = payload.next_cursor ?? null;
   }
-  return ids;
+  return { ids, hasMore, nextCursor };
 }
 
 export async function repairNotionConnection(args: {
@@ -75,27 +107,38 @@ export async function repairNotionConnection(args: {
     throw new Error("REAUTH_REQUIRED");
   }
   const container = (connection.container ?? {}) as Record<string, string>;
+  const previousState = (connection.inbound_repair_state ?? {}) as RepairState;
   const lastInbound = connection.last_inbound_at
     ? Date.parse(String(connection.last_inbound_at))
     : NaN;
   const now = args.now ?? new Date();
-  const since = new Date(
+  const defaultSince = new Date(
     (Number.isFinite(lastInbound) ? lastInbound : now.getTime() - 60 * 60 * 1000) - OVERLAP_MS,
   );
-  const sinceIso = since.toISOString();
   const fetchImpl = args.fetchImpl ?? fetch;
   const sources = ["inbox_ds", "memo_ds", "diary_ds"]
     .map((key) => container[key])
     .filter((id): id is string => typeof id === "string" && id.length > 0);
   const pageIds = new Set<string>();
+  let nextState: RepairState = { ...previousState };
   for (const dataSourceId of sources) {
-    const ids = await queryDataSource({
+    const prior = previousState[dataSourceId];
+    const sinceIso = prior?.sinceIso ?? defaultSince.toISOString();
+    const listed = await queryDataSource({
       token: credential.bundle.access_token,
       dataSourceId,
       sinceIso,
+      startCursor: prior?.cursor ?? null,
       fetchImpl,
     });
-    for (const id of ids) pageIds.add(id);
+    for (const id of listed.ids) pageIds.add(id);
+    nextState = mergeRepairState({
+      previous: nextState,
+      sourceId: dataSourceId,
+      sinceIso,
+      hasMore: listed.hasMore,
+      nextCursor: listed.nextCursor,
+    });
   }
   const linked = pageIds.size === 0 ? [] : await db()`
     select external_id
@@ -118,6 +161,15 @@ export async function repairNotionConnection(args: {
     });
     enqueued += 1;
   }
-  await touchInboundOk(args.connectionId, "repair");
+  const sql = db();
+  await sql`
+    update public.integration_connections
+       set inbound_repair_state = ${sql.json(JSON.parse(JSON.stringify(nextState)))}::jsonb,
+           updated_at = now()
+     where id = ${args.connectionId}::uuid
+  `;
+  if (shouldAdvanceRepairWatermark(nextState)) {
+    await touchInboundOk(args.connectionId, "repair");
+  }
   return { result: "ok", enqueued };
 }

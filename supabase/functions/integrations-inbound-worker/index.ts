@@ -19,7 +19,10 @@ import { runMaintenance, WORK_TYPES } from "../_shared/maintenance.ts";
 import { processNotionPageWork } from "../_shared/notion_worker.ts";
 import { repairNotionConnection } from "../_shared/notion_repair.ts";
 import { maintenanceSecretMatches } from "../_shared/webhook_auth.ts";
-import { revealNotionVerificationToken } from "../_shared/webhook_secrets.ts";
+import {
+  armNotionHandshake,
+  revealNotionVerificationToken,
+} from "../_shared/webhook_secrets.ts";
 
 function maintenanceAuthorized(req: Request): boolean {
   const expected = Deno.env.get("INTEGRATIONS_MAINTENANCE_SECRET") ?? "";
@@ -38,45 +41,51 @@ async function processAvailableWork(limit = 20): Promise<number> {
     const connectionId = String(work.connection_id ?? "");
     const workType = String(work.work_type ?? "");
     try {
-      let outcome = { result: "ok" };
-      if (workType === "notion_page") {
-        outcome = await processNotionPageWork({
-          connectionId,
-          pageId: String(payload.page_id ?? work.dedup_key ?? ""),
-          eventType: String(payload.event_type ?? "page.properties_updated"),
-        });
-      } else if (workType === "google_incremental") {
-        outcome = await processGoogleIncrementalWork({ connectionId });
-      } else if (workType === "google_calendar_gone") {
-        outcome = await processGoogleCalendarGone(connectionId);
-      } else if (workType === "bootstrap_google") {
-        outcome = await bootstrapGoogleConnection({ connectionId });
-      } else if (workType === "bootstrap_notion") {
-        outcome = await bootstrapNotionConnection({ connectionId });
-      } else if (workType === "renew_watch") {
-        const credential = await readCredential(connectionId);
-        if (!credential) {
-          throw new Error("REAUTH_REQUIRED");
+      const outcome = await withConnectionInboundLock(connectionId, async () => {
+        if (workType === "notion_page") {
+          return await processNotionPageWork({
+            connectionId,
+            pageId: String(payload.page_id ?? work.dedup_key ?? ""),
+            eventType: String(payload.event_type ?? "page.properties_updated"),
+          });
         }
-        const session = new GoogleSession(
-          connectionId,
-          credential.bundle,
-          credential.accessExpiresAt,
-        );
-        const connection = await loadConnectionRow(connectionId);
-        const calendarId =
-          ((connection?.container as { calendar_id?: string } | undefined)?.calendar_id) ??
-          null;
-        const renewed = await withConnectionInboundLock(connectionId, () =>
-          renewGoogleWatch({ connectionId, session, calendarId })
-        );
-        if (renewed.renewed) {
-          await setInboundStatus(connectionId, "watch_ok", { result: "renew_watch" });
+        if (workType === "google_incremental") {
+          return await processGoogleIncrementalWork({ connectionId });
         }
-        outcome = { result: renewed.renewed ? "ok" : (renewed.skipped ?? "ok") };
-      } else if (workType === "repair") {
-        outcome = await repairNotionConnection({ connectionId });
-      }
+        if (workType === "google_calendar_gone") {
+          return await processGoogleCalendarGone(connectionId);
+        }
+        if (workType === "bootstrap_google") {
+          return await bootstrapGoogleConnection({ connectionId });
+        }
+        if (workType === "bootstrap_notion") {
+          return await bootstrapNotionConnection({ connectionId });
+        }
+        if (workType === "renew_watch") {
+          const credential = await readCredential(connectionId);
+          if (!credential) {
+            throw new Error("REAUTH_REQUIRED");
+          }
+          const session = new GoogleSession(
+            connectionId,
+            credential.bundle,
+            credential.accessExpiresAt,
+          );
+          const connection = await loadConnectionRow(connectionId);
+          const calendarId =
+            ((connection?.container as { calendar_id?: string } | undefined)?.calendar_id) ??
+            null;
+          const renewed = await renewGoogleWatch({ connectionId, session, calendarId });
+          if (renewed.renewed) {
+            await setInboundStatus(connectionId, "watch_ok", { result: "renew_watch" });
+          }
+          return { result: renewed.renewed ? "ok" : (renewed.skipped ?? "ok") };
+        }
+        if (workType === "repair") {
+          return await repairNotionConnection({ connectionId });
+        }
+        return { result: "ok" };
+      });
       if (outcome.result === "deferred") {
         await deferInboundWork(work.id);
         processed += 1;
@@ -110,7 +119,7 @@ Deno.serve(async (req) => {
   if (!maintenanceAuthorized(req)) {
     return json({ ok: false, error: "AUTH_REQUIRED" }, 401);
   }
-  let body: { action?: string } = {};
+  let body: { action?: string; purpose?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -123,6 +132,15 @@ Deno.serve(async (req) => {
         return json({ ok: false, error: "NOT_FOUND" }, 404);
       }
       return json({ ok: true, verification_token: token });
+    }
+    if (body.action === "arm_notion_handshake") {
+      const purpose = body.purpose === "rotate" ? "rotate" : "initial";
+      const armed = await armNotionHandshake(purpose);
+      return json({
+        ok: true,
+        setup_nonce: armed.setupNonce,
+        expires_at: armed.expiresAt,
+      });
     }
     const maintenance = await runMaintenance();
     const processed = await processAvailableWork();

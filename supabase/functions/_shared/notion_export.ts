@@ -25,8 +25,39 @@ export function notionDataSource(
   return null;
 }
 
+export function notionTitleFromRow(module: string, row: Record<string, unknown>): string {
+  if (module === "inbox_items") {
+    return String(row.content ?? "").slice(0, 2000);
+  }
+  return String(row.title ?? "").slice(0, 2000);
+}
+
+/** Old exporter used `content ?? title` for every module, including Memo/Diary. */
+export function legacyExportedNotionTitle(row: Record<string, unknown>): string {
+  return String(row.content ?? row.title ?? "").slice(0, 2000);
+}
+
+export function isLegacyMemoDiaryTitle(args: {
+  entityType: string;
+  localTitle: string;
+  localContent: string;
+  remoteTitle: string;
+}): boolean {
+  if (args.entityType !== "memos" && args.entityType !== "diary_entries") {
+    return false;
+  }
+  const remote = args.remoteTitle || "Untitled";
+  const localTitle = args.localTitle || "Untitled";
+  if (remote === localTitle) {
+    return false;
+  }
+  const oldExported = (args.localContent || args.localTitle || "").slice(0, 2000) ||
+    "Untitled";
+  return remote === oldExported;
+}
+
 export function notionProperties(module: string, row: Record<string, unknown>) {
-  const title = String(row.content ?? row.title ?? "").slice(0, 2000);
+  const title = notionTitleFromRow(module, row);
   const base: Record<string, unknown> = {
     title: { title: [{ type: "text", text: { content: title || "Untitled" } }] },
     "Diurna ID": { rich_text: [{ type: "text", text: { content: String(row.id) } }] },

@@ -54,3 +54,24 @@ Deno.test("inbox properties match existing exporter shape", () => {
 Deno.test("empty memo content exports no children", () => {
   assertEquals(notionBody("memos", { content: "" }), []);
 });
+
+Deno.test("Inbox title is content; Memo/Diary title is title", () => {
+  const inbox = notionProperties("inbox_items", {
+    id: "i1",
+    content: "Buy milk",
+    title: "ignored",
+  });
+  const memo = notionProperties("memos", {
+    id: "m1",
+    title: "Note",
+    content: "hello\n\nworld",
+  });
+  assertEquals(
+    (inbox.title as { title: Array<{ text: { content: string } }> }).title[0].text.content,
+    "Buy milk",
+  );
+  assertEquals(
+    (memo.title as { title: Array<{ text: { content: string } }> }).title[0].text.content,
+    "Note",
+  );
+});

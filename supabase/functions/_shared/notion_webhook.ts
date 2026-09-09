@@ -20,7 +20,10 @@ export type NotionWebhookEvent = {
 
 export type NotionWebhookDeps = {
   loadVerificationToken: () => Promise<string | null>;
-  storeVerificationToken: (token: string) => Promise<void>;
+  acceptHandshake: (args: {
+    verificationToken: string;
+    setupNonce: string | null;
+  }) => Promise<"stored" | "rejected">;
   lookupConnectionIds: (args: {
     workspaceId: string | null;
     pageId: string | null;
@@ -53,8 +56,19 @@ export async function handleNotionWebhook(
   const rawBody = await req.text();
   const handshake = parseNotionVerificationHandshake(rawBody);
   if (handshake) {
-    await deps.storeVerificationToken(handshake);
-    console.log("notion_verification_token_stored");
+    let setupNonce: string | null = null;
+    try {
+      setupNonce = new URL(req.url).searchParams.get("setup");
+    } catch {
+      setupNonce = null;
+    }
+    const accepted = await deps.acceptHandshake({
+      verificationToken: handshake,
+      setupNonce,
+    });
+    if (accepted !== "stored") {
+      return json({ ok: false, error: "handshake_rejected" }, 401);
+    }
     return new Response(null, { status: 200 });
   }
 

@@ -2,7 +2,7 @@ import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.t
 import { hmacSha256Hex } from "./webhook_auth.ts";
 import { handleNotionWebhook } from "./notion_webhook.ts";
 
-const token = "secret_test_verification_token";
+const token = "diurna_test_hmac_token";
 
 async function signedRequest(body: string): Promise<Request> {
   const hex = await hmacSha256Hex(token, body);
@@ -13,27 +13,47 @@ async function signedRequest(body: string): Promise<Request> {
   });
 }
 
-Deno.test("handshake stores token and does not call fetch", async () => {
-  const stored: string[] = [];
+const unused = {
+  lookupConnectionIds: async () => [] as string[],
+  acceptEvent: async () => {
+    throw new Error("should not enqueue handshake");
+  },
+};
+
+Deno.test("handshake without setup nonce is rejected", async () => {
   const response = await handleNotionWebhook(
     new Request("https://example.test/notion", {
       method: "POST",
-      body: '{"verification_token":"secret_from_notion"}',
+      body: '{"verification_token":"from_notion"}',
     }),
     {
-      loadVerificationToken: async () => token,
-      storeVerificationToken: async (value) => {
-        stored.push(value);
+      loadVerificationToken: async () => null,
+      acceptHandshake: async () => "rejected",
+      ...unused,
+    },
+  );
+  assertEquals(response.status, 401);
+});
+
+Deno.test("armed handshake stores token and does not call fetch", async () => {
+  const stored: string[] = [];
+  const response = await handleNotionWebhook(
+    new Request("https://example.test/notion?setup=diurna_test_setup_nonce", {
+      method: "POST",
+      body: '{"verification_token":"from_notion"}',
+    }),
+    {
+      loadVerificationToken: async () => null,
+      acceptHandshake: async (args) => {
+        stored.push(args.verificationToken);
+        return "stored";
       },
-      lookupConnectionIds: async () => [],
-      acceptEvent: async () => {
-        throw new Error("should not enqueue handshake");
-      },
+      ...unused,
     },
   );
   assertEquals(response.status, 200);
   assertEquals(await response.text(), "");
-  assertEquals(stored, ["secret_from_notion"]);
+  assertEquals(stored, ["from_notion"]);
 });
 
 Deno.test("signed page event enqueues and never fetches Notion", async () => {
@@ -46,8 +66,8 @@ Deno.test("signed page event enqueues and never fetches Notion", async () => {
   });
   const response = await handleNotionWebhook(await signedRequest(body), {
     loadVerificationToken: async () => token,
-    storeVerificationToken: async () => {
-      throw new Error("should not store");
+    acceptHandshake: async () => {
+      throw new Error("should not handshake");
     },
     lookupConnectionIds: async () => ["conn-1"],
     acceptEvent: async (args) => {
@@ -70,7 +90,9 @@ Deno.test("invalid signature is 401", async () => {
     }),
     {
       loadVerificationToken: async () => token,
-      storeVerificationToken: async () => {},
+      acceptHandshake: async () => {
+        throw new Error("should not handshake");
+      },
       lookupConnectionIds: async () => ["conn-1"],
       acceptEvent: async () => {
         throw new Error("must not enqueue");
@@ -89,7 +111,9 @@ Deno.test("unknown event type is ignored without enqueue", async () => {
   });
   const response = await handleNotionWebhook(await signedRequest(body), {
     loadVerificationToken: async () => token,
-    storeVerificationToken: async () => {},
+    acceptHandshake: async () => {
+      throw new Error("should not handshake");
+    },
     lookupConnectionIds: async () => ["conn-1"],
     acceptEvent: async () => {
       enqueued += 1;

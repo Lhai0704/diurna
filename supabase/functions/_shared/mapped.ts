@@ -55,9 +55,13 @@ export function shouldEnqueueRepair(args: {
   now: Date;
   lastInboundAt: string | null | undefined;
   inboundStatus: string;
+  hasRepairState?: boolean;
 }): boolean {
   if (args.inboundStatus !== "active" && args.inboundStatus !== "degraded") {
     return false;
+  }
+  if (args.hasRepairState) {
+    return true;
   }
   if (args.lastInboundAt == null) {
     return true;

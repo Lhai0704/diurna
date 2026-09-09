@@ -129,6 +129,44 @@ Deno.test("overlapping watches both authenticate; distinct message numbers both 
   ]);
 });
 
+Deno.test("exists without message number is rejected", async () => {
+  const response = await handleGoogleWebhook(
+    push({
+      "X-Goog-Channel-ID": "ch-1",
+      "X-Goog-Channel-Token": "tok-secret",
+      "X-Goog-Resource-ID": "res-1",
+      "X-Goog-Resource-State": "exists",
+    }),
+    {
+      lookupWatch: async () => active,
+      acceptWork: async () => {
+        throw new Error("must not enqueue");
+      },
+      recordSync: async () => {},
+    },
+  );
+  assertEquals(response.status, 400);
+});
+
+Deno.test("active watch missing resource id header is rejected", async () => {
+  const response = await handleGoogleWebhook(
+    push({
+      "X-Goog-Channel-ID": "ch-1",
+      "X-Goog-Channel-Token": "tok-secret",
+      "X-Goog-Resource-State": "exists",
+      "X-Goog-Message-Number": "3",
+    }),
+    {
+      lookupWatch: async () => active,
+      acceptWork: async () => {
+        throw new Error("must not enqueue");
+      },
+      recordSync: async () => {},
+    },
+  );
+  assertEquals(response.status, 401);
+});
+
 Deno.test("expired and unknown watches are ignored", async () => {
   const expired: ProviderWatch = { ...active, status: "expired" };
   const response = await handleGoogleWebhook(

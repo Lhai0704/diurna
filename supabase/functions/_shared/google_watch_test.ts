@@ -5,6 +5,7 @@ import {
   createGoogleWatch,
   decideWatchRenewal,
   generateWatchSecrets,
+  pickSyncTokenSource,
   renewGoogleWatch,
   type ProviderWatch,
   type WatchPersistence,
@@ -65,6 +66,18 @@ Deno.test("unknown channel and token mismatch", () => {
       watch: watch(),
     }),
     "unauthorized",
+  );
+});
+
+Deno.test("active watch requires X-Goog-Resource-ID to match", () => {
+  assertEquals(
+    authenticateGoogleNotification({
+      channelId: "ch-1",
+      channelToken: "tok-secret",
+      resourceId: null,
+      watch: watch({ resource_id: "res-1", status: "active" }),
+    }),
+    "mismatch",
   );
 });
 
@@ -378,4 +391,33 @@ Deno.test("a second renewal attempt skips while the first watch is still creatin
     },
   });
   assertEquals(result, { renewed: false, skipped: "creating" });
+});
+
+Deno.test("copySyncToken prefers the newest active watch", () => {
+  assertEquals(
+    pickSyncTokenSource(
+      [
+        {
+          channel_id: "old",
+          status: "retiring",
+          sync_token: "sync-old",
+          created_at: "2026-09-01T00:00:00Z",
+        },
+        {
+          channel_id: "active",
+          status: "active",
+          sync_token: "sync-new",
+          created_at: "2026-09-08T00:00:00Z",
+        },
+        {
+          channel_id: "stale",
+          status: "expired",
+          sync_token: "sync-stale",
+          created_at: "2026-09-09T00:00:00Z",
+        },
+      ],
+      "dest",
+    ),
+    "sync-new",
+  );
 });

@@ -1,3 +1,4 @@
+import postgres from "npm:postgres@3.4.5";
 import { db } from "./db.ts";
 
 export type EnqueueResult = {
@@ -20,12 +21,22 @@ export async function withConnectionInboundLock<T>(
   connectionId: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const sql = db();
-  await sql`select pg_advisory_lock(hashtextextended(${connectionId}::text, 1))`;
+  const url = Deno.env.get("SUPABASE_DB_URL");
+  if (!url) {
+    throw new Error("SUPABASE_DB_URL is not configured");
+  }
+  // Dedicated session so pg_advisory_lock is not reentrant across overlapping
+  // requests that share the max:1 query pool in db().
+  const lockSql = postgres(url, { prepare: false, max: 1 });
   try {
-    return await fn();
+    await lockSql`select pg_advisory_lock(hashtextextended(${connectionId}::text, 1))`;
+    try {
+      return await fn();
+    } finally {
+      await lockSql`select pg_advisory_unlock(hashtextextended(${connectionId}::text, 1))`;
+    }
   } finally {
-    await sql`select pg_advisory_unlock(hashtextextended(${connectionId}::text, 1))`;
+    await lockSql.end({ timeout: 5 });
   }
 }
 

@@ -105,6 +105,7 @@ The inbound migrations have **not** been applied to the hosted project, so in-re
 - `20260909120000_add_external_inbound_sync.sql`
 - `20260909130000_accept_inbound_event.sql`
 - `20260909140000_inbound_maintenance.sql`
+- `20260909150000_inbound_review_fixes.sql`
 
 **Once the first hosted deployment of these files begins, treat every applied migration as immutable.**
 
@@ -144,6 +145,7 @@ Apply **in this order**, additive, on a backup-verified project:
 1. `20260909120000_add_external_inbound_sync.sql`
 2. `20260909130000_accept_inbound_event.sql`
 3. `20260909140000_inbound_maintenance.sql`
+4. `20260909150000_inbound_review_fixes.sql`
 
 `20260908120000_add_external_integrations.sql` is already on the live project.
 
@@ -192,13 +194,23 @@ Platform already injects `SUPABASE_URL` and anon / service-role keys.
 
 ### 5. Notion webhook subscription
 
-URL:
+The public webhook URL has **no** secret in it:
 
 ```text
 https://<project-ref>.supabase.co/functions/v1/integrations-notion-webhook
 ```
 
-Create the subscription in the Notion integration. The handshake POST stores the verification token encrypted. Reveal **once** if the Notion dashboard needs it:
+Arm a one-time setup nonce (maintenance auth). Logs never include the nonce or verification token:
+
+```text
+POST /functions/v1/integrations-inbound-worker
+Header: x-diurna-maintenance: <INTEGRATIONS_MAINTENANCE_SECRET>
+Body: {"action":"arm_notion_handshake","purpose":"initial"}
+```
+
+Register the webhook as `.../integrations-notion-webhook?setup=<setup_nonce>` only for that arm window. An unsolicited handshake without a valid unused nonce is rejected and cannot overwrite an active token. Rotation uses `"purpose":"rotate"`.
+
+Reveal **once** if the Notion dashboard needs the verification token:
 
 ```text
 POST /functions/v1/integrations-inbound-worker
@@ -264,4 +276,4 @@ Only after the disposable path is green. Existing production connections stay `i
 
 ## After hosted apply
 
-New inbound schema changes are a **new** additive migration. Never edit `20260909120000`, `20260909130000` or `20260909140000` once they have been applied hosted.
+New inbound schema changes are a **new** additive migration. Never edit `20260909120000`, `20260909130000`, `20260909140000` or `20260909150000` once they have been applied hosted.

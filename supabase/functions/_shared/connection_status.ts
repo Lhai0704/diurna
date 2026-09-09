@@ -6,7 +6,8 @@ export async function loadConnectionRow(
 ): Promise<Record<string, unknown> | null> {
   const rows = await db()`
     select id, user_id, status, provider, container, inbound_status,
-           last_inbound_at, last_inbound_result, inbound_error
+           last_inbound_at, last_inbound_result, inbound_error,
+           inbound_delta_hold, inbound_repair_state
       from public.integration_connections
      where id = ${connectionId}::uuid
      limit 1

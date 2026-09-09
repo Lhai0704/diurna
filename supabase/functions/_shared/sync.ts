@@ -4,7 +4,8 @@ import { GoogleSession, ReauthRequiredError } from "./google_auth.ts";
 import { createGoogleCalendar, pushGoogle } from "./google_export.ts";
 import { acquireConnectionLease, persistLeaseProgress } from "./lease.ts";
 import { finishPass, type JsonObject } from "./lease_logic.ts";
-import { shouldSkipOutbound } from "./outbound_skip.ts";
+import { freezeLinkConflict } from "./external_mutation.ts";
+import { decideOutbound } from "./outbound_skip.ts";
 import { notionHeaders, pushNotion } from "./notion_export.ts";
 
 const WRITE_BUDGET = 80;
@@ -34,6 +35,7 @@ type Link = {
   sync_status: string;
   inbound_state?: string;
   content_hash: string | null;
+  outbound_hold?: boolean;
 };
 
 export async function runSync(args: {
@@ -133,7 +135,20 @@ export async function runSync(args: {
       counts.scanned += 1;
       const link = links.get(row.id);
       const revision = Number(row.revision ?? 1);
-      if (shouldSkipOutbound(link, revision)) {
+      const outbound = decideOutbound(link, revision, {
+        connectionDeltaHold: Boolean(connection.inbound_delta_hold),
+      });
+      if (outbound.openConflict && link) {
+        await freezeLinkConflict({
+          connectionId: String(connection.id),
+          entityType: module,
+          entityId: row.id,
+          externalId: link.external_id,
+          reason: outbound.reason ?? "remote_deleted_with_local_edit",
+          remoteSnapshot: { inbound_state: "remote_deleted" },
+        });
+      }
+      if (outbound.skip) {
         counts.skipped += 1;
         cursor[module] = row.id;
         continue;
@@ -454,7 +469,7 @@ async function loadLinks(
   const { data } = await admin
     .from("external_sync_links")
     .select(
-      "entity_id,external_id,last_synced_revision,sync_status,inbound_state,content_hash",
+      "entity_id,external_id,last_synced_revision,sync_status,inbound_state,content_hash,outbound_hold",
     )
     .eq("connection_id", connectionId)
     .eq("entity_type", entityType)

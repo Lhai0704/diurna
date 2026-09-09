@@ -33,7 +33,7 @@ export async function handleGoogleWebhook(
   const channelToken = header(req, "X-Goog-Channel-Token");
   const resourceId = header(req, "X-Goog-Resource-ID");
   const resourceState = header(req, "X-Goog-Resource-State") ?? "";
-  const messageNumber = header(req, "X-Goog-Message-Number") ?? "0";
+  const messageNumber = header(req, "X-Goog-Message-Number");
 
   if (!channelId) {
     return json({ ok: false, error: "unknown_channel" }, 404);
@@ -55,11 +55,15 @@ export async function handleGoogleWebhook(
     return json({ ok: false, error: "unknown_channel" }, 404);
   }
 
-  const eventKey = `${channelId}:${messageNumber}`;
   if (resourceState === "sync") {
+    const eventKey = `${channelId}:${messageNumber && /^[0-9]+$/.test(messageNumber) ? messageNumber : "sync"}`;
     await deps.recordSync({ eventKey, connectionId: watch.connection_id });
     return json({ ok: true, sync: true });
   }
+  if (!messageNumber || !/^[0-9]+$/.test(messageNumber)) {
+    return json({ ok: false, error: "missing_message_number" }, 400);
+  }
+  const eventKey = `${channelId}:${messageNumber}`;
   if (resourceState === "exists") {
     await deps.acceptWork({
       eventKey,

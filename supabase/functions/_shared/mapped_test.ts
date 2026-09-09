@@ -89,6 +89,15 @@ Deno.test("repair cadence is 15 minutes and only when active/degraded", () => {
     }),
     false,
   );
+  assertEquals(
+    shouldEnqueueRepair({
+      now,
+      lastInboundAt: "2026-09-09T11:50:00Z",
+      inboundStatus: "active",
+      hasRepairState: true,
+    }),
+    true,
+  );
 });
 
 Deno.test("inbound status transitions", () => {

@@ -14,7 +14,6 @@ import {
 import { createGoogleWatch, persistWatchSyncToken } from "./google_watch.ts";
 import { listGoogleEvents } from "./google_worker.ts";
 import { loadConnectionRow, setInboundStatus } from "./connection_status.ts";
-import { withConnectionInboundLock } from "./inbound_work.ts";
 import { patchMatchesRow } from "./mapped.ts";
 
 async function loadCalendarLinks(connectionId: string) {
@@ -103,8 +102,7 @@ export async function bootstrapGoogleConnection(args: {
   if (!connection || connection.status !== "connected") {
     return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
   }
-  return await withConnectionInboundLock(args.connectionId, async () => {
-    const latest = await loadConnectionRow(args.connectionId);
+  const latest = await loadConnectionRow(args.connectionId);
     if (!latest || latest.status !== "connected") {
       return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
     }
@@ -240,6 +238,5 @@ export async function bootstrapGoogleConnection(args: {
         result: "bootstrap",
       });
     }
-    return { result: "ok", ready, conflicts, watch };
-  });
+  return { result: "ok", ready, conflicts, watch };
 }

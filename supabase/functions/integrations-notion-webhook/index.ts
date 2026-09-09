@@ -3,8 +3,8 @@ import { db } from "../_shared/db.ts";
 import { acceptInboundEvent } from "../_shared/inbound_work.ts";
 import { handleNotionWebhook } from "../_shared/notion_webhook.ts";
 import {
+  acceptNotionHandshake,
   loadNotionVerificationToken,
-  storeNotionVerificationToken,
 } from "../_shared/webhook_secrets.ts";
 
 async function lookupConnectionIds(args: {
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   try {
     return await handleNotionWebhook(req, {
       loadVerificationToken: loadNotionVerificationToken,
-      storeVerificationToken: storeNotionVerificationToken,
+      acceptHandshake: acceptNotionHandshake,
       lookupConnectionIds,
       acceptEvent: async (args) => {
         const result = await acceptInboundEvent({

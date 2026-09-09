@@ -117,7 +117,8 @@ export async function enqueueDueRenewals(now = new Date()): Promise<number> {
 
 export async function enqueueDueRepairs(now = new Date()): Promise<number> {
   const rows = await db()`
-    select id::text as id, provider, inbound_status, last_inbound_at
+    select id::text as id, provider, inbound_status, last_inbound_at,
+           inbound_repair_state
       from public.integration_connections
      where status = 'connected'
        and inbound_status in ('active', 'degraded')
@@ -129,6 +130,9 @@ export async function enqueueDueRepairs(now = new Date()): Promise<number> {
         now,
         lastInboundAt: row.last_inbound_at ? String(row.last_inbound_at) : null,
         inboundStatus: String(row.inbound_status),
+        hasRepairState: row.inbound_repair_state != null &&
+          typeof row.inbound_repair_state === "object" &&
+          Object.keys(row.inbound_repair_state as object).length > 0,
       })
     ) {
       continue;

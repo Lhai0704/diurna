@@ -39,6 +39,15 @@ async function loadLink(
   return (rows[0] as LinkRow | undefined) ?? null;
 }
 
+async function clearLinkOutboundHold(connectionId: string, pageId: string): Promise<void> {
+  await db()`
+    update public.external_sync_links
+       set outbound_hold = false
+     where connection_id = ${connectionId}::uuid
+       and external_id = ${pageId}
+  `;
+}
+
 async function currentContent(
   entityType: string,
   entityId: string,
@@ -86,6 +95,26 @@ async function listBlockChildren(
   return blocks;
 }
 
+export function decideNotionLatestFetch(args: {
+  status: number;
+  page: { archived?: boolean; in_trash?: boolean } | null;
+  inboundState: string;
+}): "remote_deleted" | "restore_then_import" | "import" | "fetch_failed" {
+  if (args.status === 404) {
+    return "remote_deleted";
+  }
+  if (args.status < 200 || args.status >= 300) {
+    return "fetch_failed";
+  }
+  if (!args.page || args.page.archived === true || args.page.in_trash === true) {
+    return "remote_deleted";
+  }
+  if (args.inboundState === "remote_deleted") {
+    return "restore_then_import";
+  }
+  return "import";
+}
+
 export async function processNotionPageWork(args: {
   connectionId: string;
   pageId: string;
@@ -116,31 +145,6 @@ export async function processNotionPageWork(args: {
     return { result: "ignored", reason: "wrong_type" };
   }
 
-  if (args.eventType === "page.deleted") {
-    const applied = await applyExternalChange({
-      connectionId: args.connectionId,
-      entityType: link.entity_type,
-      entityId: link.entity_id,
-      externalId: link.external_id,
-      operation: "remote_deleted",
-      patch: {},
-      remoteSnapshot: { page_id: args.pageId, event_type: args.eventType },
-    });
-    return { result: applied.result, reason: applied.reason };
-  }
-
-  if (args.eventType === "page.undeleted" && link.inbound_state === "remote_deleted") {
-    const restored = await restoreRemoteDeletedLink({
-      connectionId: args.connectionId,
-      entityType: link.entity_type,
-      entityId: link.entity_id,
-      externalId: link.external_id,
-    });
-    if (restored.result === "conflict") {
-      return { result: restored.result, reason: restored.reason };
-    }
-  }
-
   const credential = await readCredential(args.connectionId);
   if (!credential) {
     throw new Error("REAUTH_REQUIRED");
@@ -159,12 +163,39 @@ export async function processNotionPageWork(args: {
       patch: {},
       remoteSnapshot: { page_id: args.pageId, missing: true },
     });
+    await clearLinkOutboundHold(args.connectionId, args.pageId);
     return { result: applied.result, reason: applied.reason };
   }
   if (!pageResponse.ok) {
     throw new Error(`notion_page_${pageResponse.status}`);
   }
   const page = await pageResponse.json() as NotionPage;
+  if (page.archived === true || page.in_trash === true) {
+    const applied = await applyExternalChange({
+      connectionId: args.connectionId,
+      entityType: link.entity_type,
+      entityId: link.entity_id,
+      externalId: link.external_id,
+      operation: "remote_deleted",
+      patch: {},
+      remoteSnapshot: { page_id: args.pageId, archived: true },
+      providerUpdatedAt: page.last_edited_time ?? null,
+    });
+    await clearLinkOutboundHold(args.connectionId, args.pageId);
+    return { result: applied.result, reason: applied.reason };
+  }
+  if (link.inbound_state === "remote_deleted") {
+    const restored = await restoreRemoteDeletedLink({
+      connectionId: args.connectionId,
+      entityType: link.entity_type,
+      entityId: link.entity_id,
+      externalId: link.external_id,
+    });
+    if (restored.result === "conflict") {
+      await clearLinkOutboundHold(args.connectionId, args.pageId);
+      return { result: restored.result, reason: restored.reason };
+    }
+  }
   const blocks = link.entity_type === "inbox_items"
     ? []
     : await listBlockChildren(
@@ -190,6 +221,7 @@ export async function processNotionPageWork(args: {
       remoteSnapshot: imported,
       providerUpdatedAt: imported.lastEditedTime,
     });
+    await clearLinkOutboundHold(args.connectionId, args.pageId);
     return { result: applied.result, reason: applied.reason };
   }
 
@@ -203,6 +235,7 @@ export async function processNotionPageWork(args: {
       remoteSnapshot: imported.remoteSnapshot,
       providerUpdatedAt: imported.lastEditedTime,
     });
+    await clearLinkOutboundHold(args.connectionId, args.pageId);
     return { result: frozen.result, reason: frozen.reason };
   }
 
@@ -216,5 +249,6 @@ export async function processNotionPageWork(args: {
     remoteSnapshot: imported.remoteSnapshot,
     providerUpdatedAt: imported.lastEditedTime,
   });
+  await clearLinkOutboundHold(args.connectionId, args.pageId);
   return { result: applied.result, reason: applied.reason };
 }

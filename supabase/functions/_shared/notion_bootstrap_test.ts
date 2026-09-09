@@ -63,6 +63,34 @@ Deno.test("Notion bootstrap unsupported body freezes instead of baselining", () 
   assertEquals(decision.action, "unsupported");
 });
 
+Deno.test("legacy exporter Memo title matching content is not bootstrap_remote_drift", () => {
+  const decision = decideNotionBootstrapPage({
+    entityType: "memos",
+    entity: { title: "Note", content: "hello\n\nworld", revision: 1 },
+    page: {
+      last_edited_time: "2026-09-09T12:00:00.000Z",
+      properties: { title: { title: [{ plain_text: "hello\n\nworld" }] } },
+    },
+    blocks: [paragraph("hello"), paragraph("world")],
+  });
+  assertEquals(decision.action, "ready");
+  if (decision.action === "ready") {
+    assertEquals(decision.imported.patch.title, "Note");
+  }
+});
+
+Deno.test("a genuinely edited remote Memo title is still drift", () => {
+  const decision = decideNotionBootstrapPage({
+    entityType: "memos",
+    entity: { title: "Note", content: "hello\n\nworld", revision: 1 },
+    page: {
+      properties: { title: { title: [{ plain_text: "Edited by user" }] } },
+    },
+    blocks: [paragraph("hello"), paragraph("world")],
+  });
+  assertEquals(decision.action, "drift");
+});
+
 Deno.test("Notion bootstrap does not treat Revision as authoritative", () => {
   const withoutRevision = decideNotionBootstrapPage({
     entityType: "memos",

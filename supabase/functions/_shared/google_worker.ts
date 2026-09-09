@@ -12,7 +12,7 @@ import {
   lookupSyncToken,
   persistWatchSyncToken,
 } from "./google_watch.ts";
-import { withConnectionInboundLock } from "./inbound_work.ts";
+
 
 type LinkRow = {
   entity_type: string;
@@ -187,8 +187,7 @@ export async function processGoogleIncrementalWork(args: {
   connectionId: string;
   session?: GoogleSession;
 }): Promise<{ result: string; applied: number; fullResync: boolean }> {
-  return await withConnectionInboundLock(args.connectionId, async () => {
-    const connection = await loadConnection(args.connectionId);
+  const connection = await loadConnection(args.connectionId);
     if (!connection || connection.status !== "connected") {
       return { result: "ignored", applied: 0, fullResync: false };
     }
@@ -235,12 +234,17 @@ export async function processGoogleIncrementalWork(args: {
       await persistWatchSyncToken(args.connectionId, listed.nextSyncToken);
     }
     await touchInboundOk(args.connectionId, listed.fullResync ? "full_resync" : "incremental");
+    await db()`
+      update public.integration_connections
+         set inbound_delta_hold = false,
+             updated_at = now()
+       where id = ${args.connectionId}::uuid
+    `;
     return {
       result: "ok",
       applied,
       fullResync: listed.fullResync,
     };
-  });
 }
 
 export async function processGoogleCalendarGone(

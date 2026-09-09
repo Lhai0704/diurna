@@ -6,14 +6,13 @@ import {
   bootstrapLinkVersion,
   freezeLinkConflict,
 } from "./external_mutation.ts";
-import { withConnectionInboundLock } from "./inbound_work.ts";
 import {
   importNotionPage,
   type NotionBlock,
   type NotionImportResult,
   type NotionPage,
 } from "./notion_import.ts";
-import { notionHeaders } from "./notion_export.ts";
+import { isLegacyMemoDiaryTitle, notionHeaders } from "./notion_export.ts";
 import { patchMatchesRow } from "./mapped.ts";
 
 type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -102,8 +101,23 @@ export function decideNotionBootstrapPage(args: {
       lastEditedTime: imported.lastEditedTime,
     };
   }
-  const drift = !args.entity || !patchMatchesRow(args.entity, imported.patch);
-  return { action: drift ? "drift" : "ready", imported };
+  let patch = imported.patch;
+  if (
+    args.entity &&
+    isLegacyMemoDiaryTitle({
+      entityType: args.entityType,
+      localTitle: String(args.entity.title ?? ""),
+      localContent: String(args.entity.content ?? ""),
+      remoteTitle: String(imported.patch.title ?? ""),
+    })
+  ) {
+    patch = { ...imported.patch, title: args.entity.title };
+  }
+  const drift = !args.entity || !patchMatchesRow(args.entity, patch);
+  return {
+    action: drift ? "drift" : "ready",
+    imported: { ...imported, patch },
+  };
 }
 
 export async function bootstrapNotionConnection(args: {
@@ -114,8 +128,7 @@ export async function bootstrapNotionConnection(args: {
   if (!connection || connection.status !== "connected") {
     return { result: "ignored", ready: 0, conflicts: 0 };
   }
-  return await withConnectionInboundLock(args.connectionId, async () => {
-    const latest = await loadConnectionRow(args.connectionId);
+  const latest = await loadConnectionRow(args.connectionId);
     if (!latest || latest.status !== "connected") {
       return { result: "ignored", ready: 0, conflicts: 0 };
     }
@@ -211,7 +224,6 @@ export async function bootstrapNotionConnection(args: {
         ready += 1;
       }
     }
-    await setInboundStatus(args.connectionId, "bootstrap_ok_watch_ok", { result: "bootstrap" });
-    return { result: "ok", ready, conflicts };
-  });
+  await setInboundStatus(args.connectionId, "bootstrap_ok_watch_ok", { result: "bootstrap" });
+  return { result: "ok", ready, conflicts };
 }

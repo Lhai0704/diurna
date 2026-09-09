@@ -77,10 +77,34 @@ export function authenticateGoogleNotification(args: {
   if (!args.channelToken || !timingSafeEqual(args.channelToken, args.watch.channel_token)) {
     return "unauthorized";
   }
-  if (args.watch.resource_id && args.resourceId && args.watch.resource_id !== args.resourceId) {
-    return "mismatch";
+  if (args.watch.resource_id) {
+    if (!args.resourceId || args.watch.resource_id !== args.resourceId) {
+      return "mismatch";
+    }
   }
   return "ok";
+}
+
+export function pickSyncTokenSource(
+  watches: Array<{ channel_id: string; status: string; sync_token: string | null; created_at?: string }>,
+  destChannelId: string,
+): string | null {
+  const ranked = watches
+    .filter((item) =>
+      item.channel_id !== destChannelId &&
+      item.sync_token != null &&
+      ["active", "retiring", "creating"].includes(item.status)
+    )
+    .sort((a, b) => {
+      const rank = (status: string) =>
+        status === "active" ? 0 : status === "retiring" ? 1 : 2;
+      const byStatus = rank(a.status) - rank(b.status);
+      if (byStatus !== 0) {
+        return byStatus;
+      }
+      return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
+    });
+  return ranked[0]?.sync_token ?? null;
 }
 
 export async function persistWatchCreating(args: {
@@ -246,16 +270,27 @@ export async function expireWatch(channelId: string): Promise<void> {
 }
 
 async function copySyncToken(connectionId: string, toChannelId: string): Promise<void> {
+  const watches = await db()`
+    select channel_id, status, sync_token, created_at
+      from integrations.provider_watches
+     where connection_id = ${connectionId}::uuid
+     order by created_at
+  ` as Array<{
+    channel_id: string;
+    status: string;
+    sync_token: string | null;
+    created_at: string;
+  }>;
+  const token = pickSyncTokenSource(watches, toChannelId);
+  if (!token) {
+    return;
+  }
   await db()`
-    update integrations.provider_watches as dest
-       set sync_token = src.sync_token,
+    update integrations.provider_watches
+       set sync_token = ${token},
            updated_at = now()
-      from integrations.provider_watches as src
-     where dest.channel_id = ${toChannelId}
-       and src.connection_id = ${connectionId}::uuid
-       and src.channel_id <> ${toChannelId}
-       and src.sync_token is not null
-       and dest.sync_token is null
+     where channel_id = ${toChannelId}
+       and sync_token is null
   `;
 }
 
