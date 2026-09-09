@@ -74,7 +74,7 @@ async function currentEntity(
   };
 }
 
-async function listBlockChildren(
+export async function listBlockChildren(
   token: string,
   pageId: string,
   fetchImpl: NotionFetch,

@@ -169,9 +169,10 @@ void main() {
     expect(find.text('不支持的 Notion 正文'), findsOneWidget);
     expect(find.text('远端与本地不一致'), findsOneWidget);
     expect(find.text('立即同步'), findsOneWidget);
+    expect(find.text('查看冲突'), findsOneWidget);
   });
 
-  testWidgets('timed-event conflicts are indicated without a resolver', (
+  testWidgets('timed-event conflicts are indicated and can open the resolver', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -198,6 +199,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('不支持的定时事件'), findsOneWidget);
     expect(find.text('未处理冲突：1'), findsOneWidget);
+    expect(find.text('查看冲突'), findsOneWidget);
   });
 
   testWidgets('does not render token-like inbound errors', (tester) async {

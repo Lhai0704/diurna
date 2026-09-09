@@ -77,6 +77,28 @@ void main() {
     expect(safeInboundCode('WATCH_FAILED'), 'WATCH_FAILED');
   });
 
+  test('conflict summary parses without snapshot fields', () {
+    final summary = ExternalConflictSummary.fromMap({
+      'id': 'c1',
+      'connection_id': 'n1',
+      'provider': 'notion',
+      'entity_type': 'diary_entries',
+      'entity_id': 'e1',
+      'reason': 'bootstrap_remote_drift',
+      'local_revision': 1,
+      'last_synced_revision': 1,
+      'can_keep_local_push': true,
+      'can_use_remote': true,
+      'entity_label': '2026-07-31',
+      'field_categories': ['title', 'content'],
+    });
+    expect(summary.entityLabel, '2026-07-31');
+    expect(summary.fieldCategories, ['title', 'content']);
+    expect(conflictEntityTypeLabel(summary.entityType), '日记');
+    expect(conflictFieldLabel('entry_date'), '日期');
+    expect(conflictResolveErrorLabel('STALE_CONFLICT'), contains('刷新'));
+  });
+
   test('safeInboundCode hides tokens and ciphertext', () {
     expect(safeInboundCode('tok-secret'), isNull);
     expect(safeInboundCode('Bearer abc'), isNull);

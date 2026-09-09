@@ -3,10 +3,14 @@ import { corsHeaders, json } from "../_shared/http.ts";
 import { serviceRoleKey, startOauth } from "../_shared/oauth.ts";
 import { runSync } from "../_shared/sync.ts";
 import { deleteCredentials, readCredential } from "../_shared/credentials.ts";
-import { GoogleSession } from "../_shared/google_auth.ts";
+import { GoogleSession, ReauthRequiredError } from "../_shared/google_auth.ts";
 import { stopGoogleWatches } from "../_shared/google_watch.ts";
 import { settingsInvalidateShortCircuit } from "../_shared/lease_logic.ts";
 import { db } from "../_shared/db.ts";
+import {
+  listOpenConflicts,
+  resolveExternalConflict,
+} from "../_shared/resolve_conflict.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -152,8 +156,43 @@ Deno.serve(async (req) => {
       return json({ ok: true, changed: changed === "changed" });
     }
 
+    if (action === "list_conflicts") {
+      const connectionId = typeof body.connection_id === "string" ? body.connection_id : null;
+      const conflicts = await listOpenConflicts({ userId, connectionId });
+      return json({ ok: true, conflicts });
+    }
+
+    if (action === "resolve_conflict") {
+      const conflictId = body.conflict_id as string | undefined;
+      const choice = body.choice as "keep_local" | "use_remote" | undefined;
+      const expected = body.expected_local_revision;
+      if (
+        typeof conflictId !== "string" ||
+        (choice !== "keep_local" && choice !== "use_remote") ||
+        typeof expected !== "number"
+      ) {
+        return json({ ok: false, error: { code: "VALIDATION" } }, 400);
+      }
+      const resolved = await resolveExternalConflict({
+        userId,
+        conflictId,
+        choice,
+        expectedLocalRevision: expected,
+      });
+      if (!resolved.ok) {
+        return json(
+          { ok: false, error: resolved.error ?? { code: "VALIDATION" }, result: resolved.result },
+          resolved.status ?? 400,
+        );
+      }
+      return json({ ok: true, result: resolved.result });
+    }
+
     return json({ ok: false, error: { code: "VALIDATION" } }, 400);
   } catch (error) {
+    if (error instanceof ReauthRequiredError) {
+      return json({ ok: false, error: { code: "REAUTH_REQUIRED" } }, 401);
+    }
     const message = error instanceof Error ? error.message : "internal";
     if (message.includes("token") || message.includes("Bearer")) {
       console.error("integrations failed");

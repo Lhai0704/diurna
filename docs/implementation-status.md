@@ -14,6 +14,12 @@ Windows defaults to 复古; Web and iOS default to Web 风格. The choice is loc
 
 Still not certified: live visual QA on iOS, and Web theme switching on a phone-sized viewport.
 
+## External conflict resolution — 2026-09-09
+
+Working tree only. **No hosted migration or function deploy.** Additive SQL `20260909190000_external_conflict_resolution.sql` plus `integrations` actions `list_conflicts` / `resolve_conflict`. Flutter **外部连接 → 查看冲突** offers 使用 Diurna / 使用外部. Snapshots stay off PostgREST (`external_sync_conflict_summaries` view; table select revoked from `authenticated`).
+
+Keep Diurna pushes the current mapped local row to an existing provider object only after a live re-fetch; Use External applies a live provider patch through private SQL and advances revision once when data changes. Stale local revisions return `STALE_CONFLICT`. Unsupported Notion/Google shapes cannot be imported. Remote-deleted links are never hard-deleted in Diurna.
+
 ## External inbound (Phases 1–6) — 2026-09-09
 
 Working tree only. **No hosted migration, function deploy, Notion subscription, cron, Google watch, production bootstrap or Pages push.**
