@@ -30,13 +30,82 @@ class IntegrationRepository {
       'status',
       ['pending', 'connected', 'error'],
     );
-    return (rows as List)
+    final connections = (rows as List)
         .map(
           (row) => IntegrationConnection.fromMap(
             Map<String, dynamic>.from(row as Map),
           ),
         )
         .toList();
+    final extras = await _loadInboundExtras(
+      client,
+      connections.map((item) => item.id).toList(),
+    );
+    return [
+      for (final connection in connections)
+        connection.withInboundCounts(
+          openConflictCount: extras[connection.id]?.openConflicts ?? 0,
+          remoteDeletedCount: extras[connection.id]?.remoteDeleted ?? 0,
+          conflictReasons: extras[connection.id]?.reasons ?? const [],
+        ),
+    ];
+  }
+
+  Future<Map<String, _InboundExtras>> _loadInboundExtras(
+    SupabaseClient client,
+    List<String> connectionIds,
+  ) async {
+    if (connectionIds.isEmpty) {
+      return const {};
+    }
+    final extras = <String, _InboundExtras>{};
+    _InboundExtras forId(String id) =>
+        extras.putIfAbsent(id, _InboundExtras.new);
+    try {
+      final conflictRows = await client
+          .from('external_sync_conflicts')
+          .select('connection_id, reason')
+          .eq('status', 'open')
+          .inFilter('connection_id', connectionIds);
+      for (final row in conflictRows as List) {
+        final map = Map<String, dynamic>.from(row as Map);
+        final id = map['connection_id'] as String?;
+        final reason = map['reason'] as String?;
+        if (id == null) {
+          continue;
+        }
+        final extra = forId(id);
+        extra.openConflicts += 1;
+        if (reason != null &&
+            reason.isNotEmpty &&
+            !extra.reasons.contains(reason)) {
+          extra.reasons.add(reason);
+        }
+      }
+    } on Object {
+      // Inbound tables are absent until the hosted inbound migration.
+    }
+    try {
+      final linkRows = await client
+          .from('external_sync_links')
+          .select('connection_id, inbound_state')
+          .inFilter('connection_id', connectionIds)
+          .inFilter('inbound_state', ['conflict', 'remote_deleted']);
+      for (final row in linkRows as List) {
+        final map = Map<String, dynamic>.from(row as Map);
+        final id = map['connection_id'] as String?;
+        if (id == null) {
+          continue;
+        }
+        final extra = forId(id);
+        if (map['inbound_state'] == 'remote_deleted') {
+          extra.remoteDeleted += 1;
+        }
+      }
+    } on Object {
+      // inbound_state is absent on the one-way-export schema.
+    }
+    return extras;
   }
 
   Future<String> connect(String provider) async {
@@ -96,4 +165,10 @@ class IntegrationRepository {
     }
     throw StateError('无效的同步响应');
   }
+}
+
+class _InboundExtras {
+  int openConflicts = 0;
+  int remoteDeleted = 0;
+  final List<String> reasons = [];
 }

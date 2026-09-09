@@ -11,6 +11,13 @@ class IntegrationConnection {
     this.lastSyncSummary = const {},
     this.container = const {},
     this.lastSeenGeneration,
+    this.inboundStatus = 'disabled',
+    this.lastInboundAt,
+    this.lastInboundResult,
+    this.inboundError,
+    this.openConflictCount = 0,
+    this.remoteDeletedCount = 0,
+    this.conflictReasons = const [],
   });
 
   final String id;
@@ -24,11 +31,24 @@ class IntegrationConnection {
   final Map<String, dynamic> lastSyncSummary;
   final Map<String, dynamic> container;
   final int? lastSeenGeneration;
+  final String inboundStatus;
+  final DateTime? lastInboundAt;
+  final String? lastInboundResult;
+  final String? inboundError;
+  final int openConflictCount;
+  final int remoteDeletedCount;
+  final List<String> conflictReasons;
 
   bool get isConnected => status == 'connected';
 
+  bool get inboundIsDegraded => inboundStatus == 'degraded';
+
+  bool get inboundRepairAvailable =>
+      inboundStatus == 'degraded' || inboundStatus == 'active';
+
   bool get isReauthRequired =>
       lastError == 'REAUTH_REQUIRED' ||
+      inboundError == 'REAUTH_REQUIRED' ||
       lastSyncStatus == 'failed' && lastError == 'REAUTH_REQUIRED';
 
   bool get needsRetry =>
@@ -65,7 +85,53 @@ class IntegrationConnection {
         map['container'] as Map? ?? const {},
       ),
       lastSeenGeneration: _asInt(map['last_seen_generation']),
+      inboundStatus: map['inbound_status'] as String? ?? 'disabled',
+      lastInboundAt: map['last_inbound_at'] == null
+          ? null
+          : DateTime.tryParse(map['last_inbound_at'] as String),
+      lastInboundResult: map['last_inbound_result'] as String?,
+      inboundError: map['inbound_error'] as String?,
+      openConflictCount: _asInt(map['open_conflict_count']) ?? 0,
+      remoteDeletedCount: _asInt(map['remote_deleted_count']) ?? 0,
+      conflictReasons: _asStringList(map['conflict_reasons']),
     );
+  }
+
+  IntegrationConnection withInboundCounts({
+    int openConflictCount = 0,
+    int remoteDeletedCount = 0,
+    List<String> conflictReasons = const [],
+  }) {
+    return IntegrationConnection(
+      id: id,
+      provider: provider,
+      status: status,
+      lastSyncStatus: lastSyncStatus,
+      enabledModules: enabledModules,
+      displayName: displayName,
+      lastSyncAt: lastSyncAt,
+      lastError: lastError,
+      lastSyncSummary: lastSyncSummary,
+      container: container,
+      lastSeenGeneration: lastSeenGeneration,
+      inboundStatus: inboundStatus,
+      lastInboundAt: lastInboundAt,
+      lastInboundResult: lastInboundResult,
+      inboundError: inboundError,
+      openConflictCount: openConflictCount,
+      remoteDeletedCount: remoteDeletedCount,
+      conflictReasons: conflictReasons,
+    );
+  }
+
+  static List<String> _asStringList(Object? value) {
+    if (value is List) {
+      return [
+        for (final item in value)
+          if (item is String && item.isNotEmpty) item,
+      ];
+    }
+    return const [];
   }
 
   static int? _asInt(Object? value) {
@@ -80,6 +146,72 @@ class IntegrationConnection {
     }
     return null;
   }
+}
+
+String inboundStatusLabel(String status) {
+  return switch (status) {
+    'bootstrapping' => '正在建立入站基线',
+    'active' => '入站正常',
+    'degraded' => '入站降级',
+    'error' => '入站错误',
+    _ => '入站未启用',
+  };
+}
+
+String? inboundDegradedHint(String provider, String status) {
+  if (status != 'degraded') {
+    return null;
+  }
+  if (provider == 'google') {
+    return '日历推送暂不可用，定时修复仍会同步已关联事件。连接未停用。';
+  }
+  return '入站推送异常，定时修复仍可用。连接未停用。';
+}
+
+String inboundResultLabel(String? result) {
+  return switch (result) {
+    'bootstrap' => '基线完成',
+    'incremental' => '增量同步',
+    'full_resync' => '全量重建游标',
+    'repair' => '定时修复',
+    'renew_watch' => '已续订推送',
+    'ok' => '成功',
+    'error' => '失败',
+    null => '尚未入站',
+    _ => safeInboundCode(result) ?? '已处理',
+  };
+}
+
+String inboundReasonLabel(String reason) {
+  return switch (reason) {
+    'unsupported_content' => '不支持的 Notion 正文',
+    'unsupported_timed_event' => '不支持的定时事件',
+    'unsupported_recurrence' => '不支持的重复事件',
+    'bootstrap_remote_drift' => '远端与本地不一致',
+    'remote_deleted_with_local_edit' => '远端已删除且本地有未同步修改',
+    'remote_deleted' => '远端已删除',
+    'inbox_relationship' => '收集箱关系冲突',
+    _ => reason,
+  };
+}
+
+/// Display-only codes. Anything that looks like a secret is omitted.
+String? safeInboundCode(String? value) {
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  final lower = value.toLowerCase();
+  if (lower.contains('token') ||
+      lower.contains('bearer') ||
+      lower.contains('secret') ||
+      lower.contains('cipher') ||
+      lower.contains('password')) {
+    return null;
+  }
+  if (!RegExp(r'^[A-Za-z0-9_.-]{1,64}$').hasMatch(value)) {
+    return null;
+  }
+  return value;
 }
 
 class SyncResult {

@@ -6,3 +6,12 @@ verify_jwt = true
 
 [functions.integrations-oauth-callback]
 verify_jwt = false
+
+[functions.integrations-notion-webhook]
+verify_jwt = false
+
+[functions.integrations-inbound-worker]
+verify_jwt = false
+
+[functions.integrations-google-webhook]
+verify_jwt = false

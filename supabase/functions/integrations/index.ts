@@ -2,7 +2,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/http.ts";
 import { serviceRoleKey, startOauth } from "../_shared/oauth.ts";
 import { runSync } from "../_shared/sync.ts";
-import { deleteCredentials } from "../_shared/credentials.ts";
+import { deleteCredentials, readCredential } from "../_shared/credentials.ts";
+import { GoogleSession } from "../_shared/google_auth.ts";
+import { stopGoogleWatches } from "../_shared/google_watch.ts";
 import { settingsInvalidateShortCircuit } from "../_shared/lease_logic.ts";
 import { db } from "../_shared/db.ts";
 
@@ -76,12 +78,21 @@ Deno.serve(async (req) => {
       if (data.sync_lease_until && Date.parse(data.sync_lease_until) > Date.now()) {
         return json({ ok: false, error: { code: "SYNC_IN_PROGRESS" } }, 409);
       }
+      if (provider === "google") {
+        const credential = await readCredential(data.id);
+        const session = credential
+          ? new GoogleSession(data.id, credential.bundle, credential.accessExpiresAt)
+          : null;
+        await stopGoogleWatches(data.id, session);
+      }
       await admin.from("external_sync_links").delete().eq("connection_id", data.id);
       await deleteCredentials(data.id);
       await admin
         .from("integration_connections")
         .update({
           status: "disconnected",
+          inbound_status: "disabled",
+          inbound_error: null,
           last_seen_generation: null,
           page_cursor: {},
           sync_run_id: null,

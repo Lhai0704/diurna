@@ -12,7 +12,7 @@ Diurna 是一个使用 Flutter 和 Supabase 构建的个人信息管理应用，
 - 备忘录：纯文本标题与正文、手动保存和跨设备拖拽排序。复古/现代四宫格把它放在左侧日程下方；Web 风格宽屏使用左右分栏，手机浏览器使用列表与详情页。
 - 机器接口：共享 Dart 业务层、独立 Windows JSON CLI、20 个 stdio MCP tools 和 Diurna Skill。
 - 同步协议 v2：版本冲突保护、持久化上传回执、Realtime 通知及冲突处理。
-- 外部连接：单向把 Inbox / Memo / Diary 导出到 Notion，把全日程事件导出到 Google Calendar。云端 generation 变化并稳定约 1 分钟后自动导出，也可在 **外部连接** 页立即同步。从 **设置** 进入：四宫格桌面在日记面板标题栏，Web 风格在收集箱顶栏。授权与导出走 Edge Functions，Flutter 不读取第三方 token。详见 [外部连接](docs/external-integrations.md)。
+- 外部连接：单向把 Inbox / Memo / Diary 导出到 Notion，把全日程事件导出到 Google Calendar。云端 generation 变化并稳定约 1 分钟后自动导出，也可在 **外部连接** 页立即同步。仓库内已实现已关联条目的反向入站（webhook + worker，无冲突解决页）；托管部署须按 [双向同步](docs/external-bidirectional-sync.md) 的顺序，在明确批准后才执行。从 **设置** 进入：四宫格桌面在日记面板标题栏，Web 风格在收集箱顶栏。授权与导出走 Edge Functions，Flutter 不读取第三方 token。详见 [外部连接](docs/external-integrations.md)。
 - 主题：设置中可切换 **复古**、**现代风格**（同一套四宫格，配色与边框不同）和 **Web 风格**（分页导航）。Windows 默认复古，Web 与 iOS 默认 Web 风格。
 
 ## 本地运行
@@ -31,7 +31,7 @@ flutter run -d windows
 
 Windows Release 客户端在 `build/windows/x64/runner/Release/diurna.exe`，需连同同目录的 `data` 和 dll 一起使用。协议 v2 启用后，旧客户端无法继续上传。
 
-外部连接的 OAuth 密钥、`INTEGRATION_TOKEN_KEY` 和 `SUPABASE_DB_URL` 只放在 Supabase Edge Function Secrets，不要写入 `.env` 或仓库。Redirect URI 与密钥名称见 [外部连接](docs/external-integrations.md)。
+外部连接的 OAuth 密钥、`INTEGRATION_TOKEN_KEY`、`SUPABASE_DB_URL` 和入站用的 `INTEGRATIONS_MAINTENANCE_SECRET` 只放在 Supabase Edge Function Secrets，不要写入 `.env` 或仓库。Redirect URI、密钥名称、入站迁移顺序与回滚见 [外部连接](docs/external-integrations.md) 和 [双向同步](docs/external-bidirectional-sync.md)。已应用到托管库的 migration 不可再改，只能追加新的 additive migration。
 
 ## 数据与同步
 

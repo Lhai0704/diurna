@@ -92,6 +92,139 @@ void main() {
     expect(find.text('立即同步'), findsOneWidget);
     expect(find.text('断开'), findsOneWidget);
     expect(find.text('结果：同步成功'), findsOneWidget);
+    expect(find.text('入站未启用'), findsOneWidget);
+  });
+
+  testWidgets('shows Google degraded inbound without disabling the connection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          integrationRepositoryProvider.overrideWithValue(
+            _FakeRepo([
+              IntegrationConnection(
+                id: 'g1',
+                provider: 'google',
+                status: 'connected',
+                lastSyncStatus: 'success',
+                enabledModules: const {},
+                displayName: 'Diurna',
+                inboundStatus: 'degraded',
+                inboundError: 'WATCH_FAILED',
+                lastInboundAt: DateTime.utc(2026, 9, 9, 12),
+                lastInboundResult: 'repair',
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: IntegrationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('已连接'), findsOneWidget);
+    expect(find.text('入站降级'), findsOneWidget);
+    expect(find.textContaining('定时修复仍会同步已关联事件'), findsOneWidget);
+    expect(find.textContaining('连接未停用'), findsOneWidget);
+    expect(find.text('入站错误：WATCH_FAILED'), findsOneWidget);
+    expect(find.text('入站结果：定时修复'), findsOneWidget);
+    expect(find.text('立即同步'), findsOneWidget);
+    expect(find.text('断开'), findsOneWidget);
+  });
+
+  testWidgets('shows open conflicts and remote-deleted counts', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          integrationRepositoryProvider.overrideWithValue(
+            _FakeRepo([
+              IntegrationConnection(
+                id: 'n1',
+                provider: 'notion',
+                status: 'connected',
+                lastSyncStatus: 'success',
+                enabledModules: const {
+                  'inbox': true,
+                  'memos': true,
+                  'diary': true,
+                },
+                inboundStatus: 'active',
+                openConflictCount: 2,
+                remoteDeletedCount: 1,
+                conflictReasons: const [
+                  'unsupported_content',
+                  'bootstrap_remote_drift',
+                ],
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: IntegrationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('入站正常'), findsOneWidget);
+    expect(find.text('未处理冲突：2'), findsOneWidget);
+    expect(find.text('远端已删除：1'), findsOneWidget);
+    expect(find.text('不支持的 Notion 正文'), findsOneWidget);
+    expect(find.text('远端与本地不一致'), findsOneWidget);
+    expect(find.text('立即同步'), findsOneWidget);
+  });
+
+  testWidgets('timed-event conflicts are indicated without a resolver', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          integrationRepositoryProvider.overrideWithValue(
+            _FakeRepo([
+              IntegrationConnection(
+                id: 'g1',
+                provider: 'google',
+                status: 'connected',
+                lastSyncStatus: 'success',
+                enabledModules: const {},
+                inboundStatus: 'active',
+                openConflictCount: 1,
+                conflictReasons: const ['unsupported_timed_event'],
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: IntegrationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('不支持的定时事件'), findsOneWidget);
+    expect(find.text('未处理冲突：1'), findsOneWidget);
+  });
+
+  testWidgets('does not render token-like inbound errors', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          integrationRepositoryProvider.overrideWithValue(
+            _FakeRepo([
+              IntegrationConnection(
+                id: 'g1',
+                provider: 'google',
+                status: 'connected',
+                lastSyncStatus: 'success',
+                enabledModules: const {},
+                inboundStatus: 'error',
+                inboundError: 'channel-token-secret',
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: IntegrationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('token'), findsNothing);
+    expect(find.textContaining('secret'), findsNothing);
+    expect(find.text('入站错误'), findsOneWidget);
   });
 
   testWidgets('Notion sync busy state does not disable Google Calendar', (

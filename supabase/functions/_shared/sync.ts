@@ -1,17 +1,13 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { readCredential, writeTokenBundle } from "./credentials.ts";
-import {
-  isGoogleAuthFailure,
-  ReauthRequiredError,
-  refreshGoogleAccessToken,
-  shouldRefreshAccessToken,
-} from "./google_auth.ts";
-import { googleEventId } from "./google_id.ts";
+import { readCredential } from "./credentials.ts";
+import { GoogleSession, ReauthRequiredError } from "./google_auth.ts";
+import { createGoogleCalendar, pushGoogle } from "./google_export.ts";
 import { acquireConnectionLease, persistLeaseProgress } from "./lease.ts";
 import { finishPass, type JsonObject } from "./lease_logic.ts";
+import { shouldSkipOutbound } from "./outbound_skip.ts";
+import { notionHeaders, pushNotion } from "./notion_export.ts";
 
 const WRITE_BUDGET = 80;
-const NOTION_VERSION = "2026-03-11";
 
 export type ModuleCounts = {
   scanned: number;
@@ -36,6 +32,7 @@ type Link = {
   external_id: string;
   last_synced_revision: number;
   sync_status: string;
+  inbound_state?: string;
   content_hash: string | null;
 };
 
@@ -136,7 +133,7 @@ export async function runSync(args: {
       counts.scanned += 1;
       const link = links.get(row.id);
       const revision = Number(row.revision ?? 1);
-      if (link && link.sync_status === "synced" && link.last_synced_revision === revision) {
+      if (shouldSkipOutbound(link, revision)) {
         counts.skipped += 1;
         cursor[module] = row.id;
         continue;
@@ -290,42 +287,6 @@ async function failReauth(
   };
 }
 
-class GoogleSession {
-  constructor(
-    private readonly connectionId: string,
-    private bundle: { access_token: string; refresh_token: string },
-    private expiresAt: Date | null,
-  ) {}
-
-  async token(force = false): Promise<string> {
-    if (force || shouldRefreshAccessToken(this.expiresAt, new Date())) {
-      const next = await refreshGoogleAccessToken(this.bundle.refresh_token);
-      this.bundle = {
-        access_token: next.access_token,
-        refresh_token: next.refresh_token || this.bundle.refresh_token,
-      };
-      this.expiresAt = new Date(Date.now() + next.expires_in * 1000);
-      await writeTokenBundle(this.connectionId, this.bundle, this.expiresAt);
-    }
-    return this.bundle.access_token;
-  }
-
-  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
-    const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${await this.token()}`);
-    const response = await fetch(url, { ...init, headers });
-    if (!isGoogleAuthFailure(response.status)) {
-      return response;
-    }
-    headers.set("Authorization", `Bearer ${await this.token(true)}`);
-    const retried = await fetch(url, { ...init, headers });
-    if (isGoogleAuthFailure(retried.status)) {
-      throw new ReauthRequiredError();
-    }
-    return retried;
-  }
-}
-
 async function ensureContainer(
   admin: SupabaseClient,
   connection: Record<string, unknown>,
@@ -348,22 +309,6 @@ async function ensureContainer(
     .update({ container: next, updated_at: new Date().toISOString() })
     .eq("id", connection.id);
   return { ...connection, container: next };
-}
-
-async function createGoogleCalendar(googleAuth: GoogleSession | null): Promise<JsonObject> {
-  if (!googleAuth) {
-    throw new ReauthRequiredError();
-  }
-  const response = await googleAuth.fetch("https://www.googleapis.com/calendar/v3/calendars", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ summary: "Diurna" }),
-  });
-  if (!response.ok) {
-    throw new Error(`google calendar create ${response.status}`);
-  }
-  const payload = await response.json();
-  return { calendar_id: payload.id };
 }
 
 async function createNotionWorkspace(accessToken: string): Promise<JsonObject> {
@@ -508,7 +453,9 @@ async function loadLinks(
   }
   const { data } = await admin
     .from("external_sync_links")
-    .select("entity_id,external_id,last_synced_revision,sync_status,content_hash")
+    .select(
+      "entity_id,external_id,last_synced_revision,sync_status,inbound_state,content_hash",
+    )
     .eq("connection_id", connectionId)
     .eq("entity_type", entityType)
     .in("entity_id", ids);
@@ -537,279 +484,6 @@ async function pushRow(args: {
     return pushGoogle(args);
   }
   return pushNotion(args);
-}
-
-async function pushGoogle(args: {
-  row: Record<string, unknown> & { id: string };
-  link?: Link;
-  tokens: string;
-  connection: Record<string, unknown>;
-  googleAuth: GoogleSession | null;
-}) {
-  if (!args.googleAuth) {
-    throw new ReauthRequiredError();
-  }
-  const calendarId =
-    ((args.connection.container as JsonObject | undefined)?.calendar_id as string | undefined) ??
-    "primary";
-  const eventId = args.link?.external_id ?? googleEventId(args.row.id);
-  const eventDate = String(args.row.event_date).slice(0, 10);
-  const end = nextDate(eventDate);
-  const body = {
-    id: eventId,
-    summary: args.row.title,
-    description: [
-      args.row.note ? String(args.row.note) : "",
-      args.row.is_completed ? "Completed in Diurna" : "",
-    ]
-      .filter((part) => part.length > 0)
-      .join("\n"),
-    start: { date: eventDate },
-    end: { date: end },
-    extendedProperties: {
-      private: {
-        diurnaId: args.row.id,
-        diurnaRevision: String(args.row.revision ?? ""),
-        diurnaCompleted: args.row.is_completed ? "true" : "false",
-      },
-    },
-  };
-  let recovered = false;
-  let created = false;
-  let existingId = args.link?.external_id;
-  const eventUrl =
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
-  if (!existingId) {
-    const get = await args.googleAuth.fetch(`${eventUrl}/${eventId}`);
-    if (get.ok) {
-      recovered = true;
-      existingId = eventId;
-    }
-  }
-  if (existingId) {
-    const patch = await args.googleAuth.fetch(`${eventUrl}/${existingId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!patch.ok) {
-      throw new Error(`google patch ${patch.status}`);
-    }
-  } else {
-    const insert = await args.googleAuth.fetch(eventUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!insert.ok) {
-      throw new Error(`google insert ${insert.status}`);
-    }
-    created = true;
-    existingId = eventId;
-  }
-  return {
-    externalId: existingId!,
-    containerId: calendarId,
-    created,
-    recovered,
-    contentHash: null,
-  };
-}
-
-async function pushNotion(args: {
-  module: string;
-  row: Record<string, unknown> & { id: string };
-  link?: Link;
-  tokens: string;
-  connection: Record<string, unknown>;
-}) {
-  const container = (args.connection.container ?? {}) as JsonObject;
-  const dataSourceId = notionDataSource(container, args.module);
-  if (!dataSourceId) {
-    throw new Error("notion container missing");
-  }
-  const properties = notionProperties(args.module, args.row);
-  let recovered = false;
-  let created = false;
-  let pageId = args.link?.external_id;
-  if (!pageId) {
-    pageId = await findNotionPage(args.tokens, dataSourceId, args.row.id);
-    if (pageId) {
-      recovered = true;
-    }
-  }
-  if (pageId) {
-    const patch = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-      method: "PATCH",
-      headers: notionHeaders(args.tokens),
-      body: JSON.stringify({ properties }),
-    });
-    if (!patch.ok) {
-      throw new Error(`notion patch ${patch.status}`);
-    }
-    if (args.module !== "inbox_items") {
-      await replaceNotionBody(args.tokens, pageId, notionBody(args.module, args.row));
-    }
-  } else {
-    const children = notionBody(args.module, args.row);
-    const createdPage = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: notionHeaders(args.tokens),
-      body: JSON.stringify({
-        parent: { type: "data_source_id", data_source_id: dataSourceId },
-        properties,
-        children,
-      }),
-    });
-    if (!createdPage.ok) {
-      throw new Error(`notion create ${createdPage.status}`);
-    }
-    const payload = await createdPage.json();
-    pageId = payload.id as string;
-    created = true;
-  }
-  return {
-    externalId: pageId!,
-    containerId: dataSourceId,
-    created,
-    recovered,
-    contentHash: hashText(String(args.row.content ?? args.row.note ?? "")),
-  };
-}
-
-function notionDataSource(container: JsonObject, module: string): string | null {
-  if (module === "inbox_items") return (container.inbox_ds as string) ?? null;
-  if (module === "memos") return (container.memo_ds as string) ?? null;
-  if (module === "diary_entries") return (container.diary_ds as string) ?? null;
-  return null;
-}
-
-function notionHeaders(token: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Notion-Version": NOTION_VERSION,
-  };
-}
-
-function notionProperties(module: string, row: Record<string, unknown>) {
-  const title = String(row.content ?? row.title ?? "").slice(0, 2000);
-  const base: Record<string, unknown> = {
-    title: { title: [{ type: "text", text: { content: title || "Untitled" } }] },
-    "Diurna ID": { rich_text: [{ type: "text", text: { content: String(row.id) } }] },
-    Revision: { number: Number(row.revision ?? 1) },
-    "Updated At": {
-      date: { start: String(row.updated_at ?? new Date().toISOString()) },
-    },
-  };
-  if (module === "inbox_items") {
-    return {
-      ...base,
-      Type: row.item_type ? { select: { name: String(row.item_type) } } : { select: null },
-      Column: { select: { name: String(row.inbox_column ?? "pending") } },
-      Status: { select: { name: row.is_completed ? "done" : "open" } },
-      Pinned: { checkbox: Boolean(row.is_pinned) },
-      Archived: { checkbox: Boolean(row.is_archived) },
-      Topic: { checkbox: Boolean(row.is_topic) },
-    };
-  }
-  if (module === "diary_entries") {
-    return {
-      ...base,
-      Date: { date: { start: String(row.entry_date).slice(0, 10) } },
-      Mood: row.mood
-        ? { rich_text: [{ type: "text", text: { content: String(row.mood) } }] }
-        : { rich_text: [] },
-    };
-  }
-  return base;
-}
-
-function notionBody(module: string, row: Record<string, unknown>) {
-  if (module === "inbox_items") {
-    return [];
-  }
-  const content = String(row.content ?? "");
-  if (!content) {
-    return [];
-  }
-  return content.split(/\n+/).slice(0, 100).map((line) => ({
-    object: "block",
-    type: "paragraph",
-    paragraph: {
-      rich_text: [{ type: "text", text: { content: line.slice(0, 2000) } }],
-    },
-  }));
-}
-
-async function replaceNotionBody(
-  token: string,
-  pageId: string,
-  children: Array<Record<string, unknown>>,
-): Promise<void> {
-  const listed = await fetch(
-    `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`,
-    { headers: notionHeaders(token) },
-  );
-  if (listed.ok) {
-    const payload = await listed.json();
-    for (const block of payload.results ?? []) {
-      if (typeof block.id !== "string") {
-        continue;
-      }
-      await fetch(`https://api.notion.com/v1/blocks/${block.id}`, {
-        method: "DELETE",
-        headers: notionHeaders(token),
-      });
-    }
-  }
-  if (children.length === 0) {
-    return;
-  }
-  const appended = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
-    method: "PATCH",
-    headers: notionHeaders(token),
-    body: JSON.stringify({ children }),
-  });
-  if (!appended.ok) {
-    throw new Error(`notion body ${appended.status}`);
-  }
-}
-
-async function findNotionPage(
-  token: string,
-  dataSourceId: string,
-  entityId: string,
-): Promise<string | null> {
-  const response = await fetch(
-    `https://api.notion.com/v1/data_sources/${dataSourceId}/query`,
-    {
-      method: "POST",
-      headers: notionHeaders(token),
-      body: JSON.stringify({
-        filter: {
-          property: "Diurna ID",
-          rich_text: { equals: entityId },
-        },
-        page_size: 1,
-      }),
-    },
-  );
-  if (!response.ok) {
-    return null;
-  }
-  const payload = await response.json();
-  return payload.results?.[0]?.id ?? null;
-}
-
-function nextDate(isoDate: string): string {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
-}
-
-function hashText(value: string): string {
-  return value.length.toString();
 }
 
 export { WRITE_BUDGET };
