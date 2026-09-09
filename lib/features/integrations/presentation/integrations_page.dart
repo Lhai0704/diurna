@@ -4,6 +4,7 @@ import 'package:diurna/shared/widgets/empty_view.dart';
 import 'package:diurna/shared/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 class IntegrationsPage extends ConsumerStatefulWidget {
@@ -202,6 +203,13 @@ class _ProviderCard extends ConsumerWidget {
                               .disconnect(provider),
                     child: const Text('断开'),
                   ),
+                  if ((connection?.openConflictCount ?? 0) > 0)
+                    OutlinedButton(
+                      onPressed: () => context.push(
+                        '/settings/integrations/conflicts?connectionId=${connection!.id}',
+                      ),
+                      child: const Text('查看冲突'),
+                    ),
                 ],
                 if (busy)
                   const Padding(

@@ -13,11 +13,11 @@ Inbound architecture, state model, Flutter status UI and the hosted runbook live
 
 ## Inbound (repo only until rollout)
 
-The same **外部连接** page also shows inbound status (`disabled` / `bootstrapping` / `active` / `degraded` / `error`), last inbound activity, safe error codes, open conflict counts and remote-deleted / unsupported-content / timed-event labels. Google `degraded` means push failed; timed repair can still sync linked events. There is no conflict resolver. Flutter still never reads tokens, channel secrets or ciphertext.
+The same **外部连接** page also shows inbound status (`disabled` / `bootstrapping` / `active` / `degraded` / `error`), last inbound activity, safe error codes, open conflict counts and remote-deleted / unsupported-content / timed-event labels. Google `degraded` means push failed; timed repair can still sync linked events. Open conflicts have **查看冲突** with explicit 使用 Diurna / 使用外部. Flutter still never reads tokens, channel secrets, ciphertext or conflict snapshots.
 
 Hosted inbound needs additive migrations `20260909120000`–`20260909140000`, functions `integrations-notion-webhook`, `integrations-google-webhook`, `integrations-inbound-worker`, `INTEGRATIONS_MAINTENANCE_SECRET`, a Notion webhook subscription and cron. None of that is applied/deployed yet. See the runbook in [external-bidirectional-sync](external-bidirectional-sync.md).
 
-Flutter never reads third-party tokens. Authenticated clients may `SELECT` their own `integration_connections` and `external_sync_links` rows. Token ciphertext lives in the private `integrations` schema (not on the Data API).
+Flutter never reads third-party tokens. Authenticated clients may `SELECT` their own `integration_connections`, `external_sync_links` and `external_sync_conflict_summaries` rows. Token ciphertext lives in the private `integrations` schema (not on the Data API).
 
 ## Client entry
 

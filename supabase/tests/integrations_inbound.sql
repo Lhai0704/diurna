@@ -539,12 +539,18 @@ do $$ begin
   end;
 end $$;
 
--- User B cannot see A's conflicts.
+-- User B cannot see A's conflicts. Snapshots are not selectable.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
 do $$ begin
-  if (select count(*) from public.external_sync_conflicts) <> 0 then
-    raise exception 'conflict RLS leak';
+  begin
+    perform count(*) from public.external_sync_conflicts;
+    raise exception 'authenticated still selects conflict snapshots';
+  exception
+    when insufficient_privilege then null;
+  end;
+  if (select count(*) from public.external_sync_conflict_summaries) <> 0 then
+    raise exception 'conflict summary leak';
   end if;
 end $$;
 

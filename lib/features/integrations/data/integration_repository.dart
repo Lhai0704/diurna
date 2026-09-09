@@ -63,7 +63,7 @@ class IntegrationRepository {
         extras.putIfAbsent(id, _InboundExtras.new);
     try {
       final conflictRows = await client
-          .from('external_sync_conflicts')
+          .from('external_sync_conflict_summaries')
           .select('connection_id, reason')
           .eq('status', 'open')
           .inFilter('connection_id', connectionIds);
@@ -151,6 +151,37 @@ class IntegrationRepository {
       'provider': provider,
       'enabled_modules': enabledModules,
     });
+  }
+
+  Future<List<ExternalConflictSummary>> listConflicts({String? connectionId}) async {
+    final result = await _invoke({
+      'action': 'list_conflicts',
+      'connection_id': ?connectionId,
+    });
+    final rows = result['conflicts'];
+    if (rows is! List) {
+      return const [];
+    }
+    return [
+      for (final row in rows)
+        if (row is Map)
+          ExternalConflictSummary.fromMap(Map<String, dynamic>.from(row)),
+    ];
+  }
+
+  Future<ConflictResolveResult> resolveConflict({
+    required String conflictId,
+    required String choice,
+    required int expectedLocalRevision,
+  }) async {
+    final result = await _invoke({
+      'action': 'resolve_conflict',
+      'conflict_id': conflictId,
+      'choice': choice,
+      'expected_local_revision': expectedLocalRevision,
+      'expected_current_local_revision': expectedLocalRevision,
+    });
+    return ConflictResolveResult.fromMap(result);
   }
 
   Future<Map<String, dynamic>> _invoke(Map<String, dynamic> body) async {

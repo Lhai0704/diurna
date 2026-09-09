@@ -15,6 +15,17 @@ final integrationConnectionsProvider =
       return ref.watch(integrationRepositoryProvider).listConnections();
     });
 
+final externalConflictsProvider =
+    FutureProvider.family<List<ExternalConflictSummary>, String?>((
+      ref,
+      connectionId,
+    ) async {
+      ref.watch(authStateProvider);
+      return ref
+          .watch(integrationRepositoryProvider)
+          .listConflicts(connectionId: connectionId);
+    });
+
 class IntegrationActionState {
   const IntegrationActionState({
     this.busyProviders = const {},
@@ -120,6 +131,26 @@ class IntegrationController extends Notifier<IntegrationActionState> {
       enabledModules: enabledModules,
     );
     ref.invalidate(integrationConnectionsProvider);
+  }
+
+  Future<void> resolveConflict(
+    ExternalConflictSummary conflict,
+    String choice,
+  ) async {
+    final key = 'conflict:${conflict.id}';
+    await _run(key, () async {
+      final result = await _repo.resolveConflict(
+        conflictId: conflict.id,
+        choice: choice,
+        expectedLocalRevision: conflict.localRevision,
+      );
+      if (!result.ok) {
+        throw conflictResolveErrorLabel(result.errorCode);
+      }
+      ref.invalidate(integrationConnectionsProvider);
+      ref.invalidate(externalConflictsProvider(conflict.connectionId));
+      ref.invalidate(externalConflictsProvider(null));
+    });
   }
 }
 

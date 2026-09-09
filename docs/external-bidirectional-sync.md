@@ -9,7 +9,7 @@ Outbound one-way export is still Flutter-initiated. See [external-integrations](
 - Reverse sync is **UPDATE of already-linked objects only**. No remote create into Diurna, no hard-delete/tombstone from remote.
 - Flutter does not poll Notion or Google. Thin webhooks authenticate, dedup and enqueue; the inbound worker fetches and applies.
 - Conflicts are explicit (`external_sync_conflicts`). `inbound_state` is separate from outbound `sync_status`.
-- No conflict resolver UI yet. The **外部连接** page only shows inbound status, last activity, safe error codes, open conflict counts and reason labels.
+- Users resolve an open conflict explicitly as **使用 Diurna** or **使用外部**. The resolver never silently picks a side. Flutter never reads snapshots, tokens, or `remote_version`.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ provider webhook
 
 Loop prevention: same-transaction `last_synced_revision` bump, mapped-field no-op, exporter skip of freeze/conflict/`remote_deleted` inbound states.
 
-Flutter may `SELECT` its own `integration_connections`, `external_sync_links` and `external_sync_conflicts` rows. It must not read:
+Flutter may `SELECT` its own `integration_connections`, `external_sync_links` and `external_sync_conflict_summaries` rows (no snapshots). Conflict resolve goes through the authenticated `integrations` function (`list_conflicts`, `resolve_conflict`). It must not read:
 
 - OAuth access/refresh tokens
 - Notion verification token
@@ -80,6 +80,13 @@ One conflicted link does not disable the connection.
 
 Google `degraded` text says push is down and **timed repair still syncs linked events**; it does not say the connection is unusable. Token-like strings are not rendered.
 
+Open conflicts open **查看冲突**. Each row shows provider, module, reason, optional date, mapped field categories (not values), and two actions:
+
+- **使用 Diurna**: re-fetch the live provider object. If it still differs, PATCH the existing remote (never create). Only after that write succeeds, set `last_synced_revision` to the current local revision (no local bump), `inbound_state=ready`, `resolved_local`. If live state already equals local, skip the provider write. If the remote is gone, keep the Diurna row, set `inbound_state=remote_deleted` / `outbound_hold=true`, `resolved_local`. Do not recreate a deleted remote. Unsupported Notion bodies and timed Google events may be overwritten this way. **`unsupported_recurrence` cannot**: Keep Diurna is disabled, no PATCH, conflict stays frozen.
+- **使用外部**: re-fetch live provider state and apply it through `integrations.finish_conflict_use_remote` (not a PostgREST business update). Mapped change → local revision +1 once and `last_synced_revision` follows. Equal mapped state → no revision bump. `unsupported_content` / timed / recurring → error, conflict stays open. Recurring Google events cannot be imported or overwritten. Remote gone → no local hard-delete; freeze as `remote_deleted` and `resolved_remote`.
+
+`conflict.local_revision` is historical. Summaries expose the **current** business-row revision as the value the UI must confirm. A resolve request with an older expected revision returns `STALE_CONFLICT` and leaves the conflict open; refresh is not an auto-resolve. After refresh the user chooses again at the current revision. Keep Diurna holds the selected snapshot in one transaction from that freshness check through the provider write and finish. Echo prevention is the same as inbound: `last_synced_revision` equals local revision so outbound export skips.
+
 ## Isolated tests
 
 `scripts/test-sync.ps1` on a loopback database named `*_test`:
@@ -93,6 +100,8 @@ Google `degraded` text says push is down and **timed repair still syncs linked e
 7. `supabase/tests/integrations_phase4.sql`
 8. `supabase/tests/integrations_review_fixes.sql`
 9. `supabase/tests/integrations_inbound_activation.sql`
+10. `supabase/tests/integrations_inbound_date_baseline.sql`
+11. `supabase/tests/integrations_conflict_resolution.sql`
 
 Deno: `npx --yes deno@2.1.4 test supabase/functions/_shared --allow-env`.
 
@@ -104,8 +113,8 @@ Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test script
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- **Applied and immutable:** `20260909120000`–`20260909170000`
-- **Review-only, not hosted yet:** `20260909180000_fix_inbound_date_baseline.sql`
+- **Applied and immutable:** `20260909120000`–`20260909180000`
+- **Review-only, not hosted yet:** `20260909190000_external_conflict_resolution.sql`
 
 Never edit an already-applied migration. Create a new additive file instead.
 

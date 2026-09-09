@@ -8,6 +8,7 @@ import 'package:diurna/features/calendar/presentation/calendar_page.dart';
 import 'package:diurna/features/diary/presentation/diary_list_page.dart';
 import 'package:diurna/features/home/presentation/windows_home_page.dart';
 import 'package:diurna/features/inbox/presentation/inbox_page.dart';
+import 'package:diurna/features/integrations/presentation/external_conflicts_page.dart';
 import 'package:diurna/features/integrations/presentation/integrations_page.dart';
 import 'package:diurna/features/integrations/presentation/oauth_connected_page.dart';
 import 'package:diurna/features/memo/presentation/memo_page.dart';
@@ -57,6 +58,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'integrations',
             builder: (context, state) => const IntegrationsPage(),
+            routes: [
+              GoRoute(
+                path: 'conflicts',
+                builder: (context, state) => ExternalConflictsPage(
+                  connectionId: state.uri.queryParameters['connectionId'],
+                ),
+              ),
+            ],
           ),
         ],
       ),

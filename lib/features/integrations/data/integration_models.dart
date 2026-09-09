@@ -182,6 +182,10 @@ String inboundResultLabel(String? result) {
   };
 }
 
+String conflictRecurrenceBlockedLabel() {
+  return 'Google 重复事件目前无法自动处理。不会改写外部事件，也不会导入到 Diurna。请在日历中改为非重复事件后再同步。';
+}
+
 String inboundReasonLabel(String reason) {
   return switch (reason) {
     'unsupported_content' => '不支持的 Notion 正文',
@@ -212,6 +216,131 @@ String? safeInboundCode(String? value) {
     return null;
   }
   return value;
+}
+
+class ExternalConflictSummary {
+  const ExternalConflictSummary({
+    required this.id,
+    required this.connectionId,
+    required this.provider,
+    required this.entityType,
+    required this.entityId,
+    required this.reason,
+    required this.localRevision,
+    required this.lastSyncedRevision,
+    this.canKeepLocal = true,
+    required this.canKeepLocalPush,
+    required this.canUseRemote,
+    this.entityLabel,
+    this.fieldCategories = const [],
+    this.blockedReason,
+    this.createdAt,
+  });
+
+  final String id;
+  final String connectionId;
+  final String provider;
+  final String entityType;
+  final String entityId;
+  final String reason;
+  final int localRevision;
+  final int lastSyncedRevision;
+  final bool canKeepLocal;
+  final bool canKeepLocalPush;
+  final bool canUseRemote;
+  final String? entityLabel;
+  final List<String> fieldCategories;
+  final String? blockedReason;
+  final DateTime? createdAt;
+
+  factory ExternalConflictSummary.fromMap(Map<String, dynamic> map) {
+    return ExternalConflictSummary(
+      id: map['id'] as String,
+      connectionId: map['connection_id'] as String,
+      provider: map['provider'] as String,
+      entityType: map['entity_type'] as String,
+      entityId: map['entity_id'] as String,
+      reason: map['reason'] as String,
+      localRevision: IntegrationConnection._asInt(map['local_revision']) ?? 0,
+      lastSyncedRevision:
+          IntegrationConnection._asInt(map['last_synced_revision']) ?? 0,
+      canKeepLocal: map['can_keep_local'] != false,
+      canKeepLocalPush: map['can_keep_local_push'] != false,
+      canUseRemote: map['can_use_remote'] != false,
+      entityLabel: map['entity_label'] as String?,
+      fieldCategories: IntegrationConnection._asStringList(
+        map['field_categories'],
+      ),
+      blockedReason: map['blocked_reason'] as String?,
+      createdAt: map['created_at'] == null
+          ? null
+          : DateTime.tryParse(map['created_at'] as String),
+    );
+  }
+}
+
+String conflictEntityTypeLabel(String entityType) {
+  return switch (entityType) {
+    'inbox_items' => '收集箱',
+    'memos' => '备忘',
+    'diary_entries' => '日记',
+    'calendar_events' => '日历',
+    _ => entityType,
+  };
+}
+
+String conflictFieldLabel(String field) {
+  return switch (field) {
+    'title' => '标题',
+    'content' => '正文',
+    'entry_date' => '日期',
+    'event_date' => '日期',
+    'mood' => '心情',
+    'note' => '备注',
+    'is_pinned' => '置顶',
+    'is_completed' => '完成',
+    'item_type' => '类型',
+    'inbox_column' => '列',
+    _ => field,
+  };
+}
+
+class ConflictResolveResult {
+  const ConflictResolveResult({
+    required this.ok,
+    this.result,
+    this.errorCode,
+  });
+
+  final bool ok;
+  final String? result;
+  final String? errorCode;
+
+  factory ConflictResolveResult.fromMap(Map<String, dynamic> map) {
+    final error = map['error'];
+    return ConflictResolveResult(
+      ok: map['ok'] == true,
+      result: map['result'] as String?,
+      errorCode: error is Map ? error['code'] as String? : null,
+    );
+  }
+}
+
+String conflictResolveErrorLabel(String? code) {
+  return switch (code) {
+    'STALE_CONFLICT' => '本地已变化，请刷新后重新选择',
+    'UNSUPPORTED_REMOTE' => '外部内容不受支持，不能导入',
+    'UNSUPPORTED_RECURRENCE' => 'Google 重复事件目前无法自动处理',
+    'PROVIDER_UNAVAILABLE' => '暂时无法读取外部数据',
+    'PROVIDER_WRITE_FAILED' => '写入外部失败，冲突仍保留',
+    'PROVIDER_VERIFY_FAILED' => '外部写入未完全生效，请重试',
+    'PROVIDER_VERSION_CONFLICT' => '外部已有更新，请刷新后重新选择',
+    'REAUTH_REQUIRED' => '授权已过期，请重新连接',
+    'INBOUND_DISABLED' => '入站未启用',
+    'INBOX_RELATIONSHIP' => '收集箱关系冲突，无法采用外部版本',
+    'NOT_FOUND' => '冲突已不存在',
+    _ => '处理失败，请稍后重试',
+  };
 }
 
 class SyncResult {
