@@ -31,6 +31,7 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 2. `20260909130000_accept_inbound_event.sql`
 3. `20260909140000_inbound_maintenance.sql`
 4. `20260909150000_inbound_review_fixes.sql`
+5. `20260909160000_inbound_work_heartbeat.sql`
 
 These three are **not** on the hosted project yet. Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. After the first hosted apply, those migration files are immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 

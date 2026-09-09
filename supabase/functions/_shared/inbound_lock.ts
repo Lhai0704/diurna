@@ -54,6 +54,31 @@ export class FakeAdvisoryBackend {
   }
 }
 
+export class FakeProcessingLease {
+  status: "processing" | "pending" | "done" = "processing";
+  lockedUntil: number;
+
+  constructor(start: number, ttl: number) {
+    this.lockedUntil = start + ttl;
+  }
+
+  heartbeat(now: number, ttl: number): "ok" | "ignored" {
+    if (this.status !== "processing") {
+      return "ignored";
+    }
+    this.lockedUntil = now + ttl;
+    return "ok";
+  }
+
+  reclaim(now: number): boolean {
+    if (this.status === "processing" && this.lockedUntil < now) {
+      this.status = "pending";
+      return true;
+    }
+    return false;
+  }
+}
+
 export async function runWithLock<T>(
   session: LockSession,
   key: string,

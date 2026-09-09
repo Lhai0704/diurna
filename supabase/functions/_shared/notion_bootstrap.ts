@@ -12,7 +12,11 @@ import {
   type NotionImportResult,
   type NotionPage,
 } from "./notion_import.ts";
-import { isLegacyMemoDiaryTitle, notionHeaders } from "./notion_export.ts";
+import {
+  isLegacyMemoDiaryTitle,
+  notionHeaders,
+  patchNotionPageTitle,
+} from "./notion_export.ts";
 import { patchMatchesRow } from "./mapped.ts";
 
 type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -61,6 +65,11 @@ export type NotionBootstrapDecision =
     imported: Extract<NotionImportResult, { kind: "update" }>;
   }
   | {
+    action: "migrate_title";
+    imported: Extract<NotionImportResult, { kind: "update" }>;
+    remainingDrift: boolean;
+  }
+  | {
     action: "drift";
     imported: Extract<NotionImportResult, { kind: "update" }>;
   }
@@ -101,22 +110,27 @@ export function decideNotionBootstrapPage(args: {
       lastEditedTime: imported.lastEditedTime,
     };
   }
-  let patch = imported.patch;
-  if (
+  const legacy = Boolean(
     args.entity &&
-    isLegacyMemoDiaryTitle({
-      entityType: args.entityType,
-      localTitle: String(args.entity.title ?? ""),
-      localContent: String(args.entity.content ?? ""),
-      remoteTitle: String(imported.patch.title ?? ""),
-    })
-  ) {
-    patch = { ...imported.patch, title: args.entity.title };
+      isLegacyMemoDiaryTitle({
+        entityType: args.entityType,
+        localTitle: String(args.entity.title ?? ""),
+        localContent: String(args.entity.content ?? ""),
+        remoteTitle: String(imported.patch.title ?? ""),
+      }),
+  );
+  if (legacy && args.entity) {
+    const patch = { ...imported.patch, title: args.entity.title };
+    return {
+      action: "migrate_title",
+      imported: { ...imported, patch },
+      remainingDrift: !patchMatchesRow(args.entity, patch),
+    };
   }
-  const drift = !args.entity || !patchMatchesRow(args.entity, patch);
+  const drift = !args.entity || !patchMatchesRow(args.entity, imported.patch);
   return {
     action: drift ? "drift" : "ready",
-    imported: { ...imported, patch },
+    imported,
   };
 }
 
@@ -207,14 +221,28 @@ export async function bootstrapNotionConnection(args: {
         if (applied.result === "conflict") conflicts += 1;
         continue;
       }
+      let providerUpdatedAt = decision.imported.lastEditedTime;
+      if (decision.action === "migrate_title") {
+        const migrated = await patchNotionPageTitle({
+          token: credential.bundle.access_token,
+          pageId: link.external_id,
+          title: String(entity?.title ?? ""),
+          fetchImpl,
+        });
+        providerUpdatedAt = migrated.lastEditedTime ?? providerUpdatedAt;
+      }
       const bootstrapped = await bootstrapLinkVersion({
         connectionId: args.connectionId,
         entityType: link.entity_type,
         entityId: link.entity_id,
         externalId: link.external_id,
-        providerUpdatedAt: decision.imported.lastEditedTime,
-        drift: decision.action === "drift",
-        reason: decision.action === "drift" ? "bootstrap_remote_drift" : undefined,
+        providerUpdatedAt,
+        drift: decision.action === "drift" ||
+          (decision.action === "migrate_title" && decision.remainingDrift),
+        reason: decision.action === "drift" ||
+            (decision.action === "migrate_title" && decision.remainingDrift)
+          ? "bootstrap_remote_drift"
+          : undefined,
         localSnapshot: entity ?? {},
         remoteSnapshot: decision.imported.remoteSnapshot,
       });

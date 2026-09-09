@@ -106,6 +106,7 @@ The inbound migrations have **not** been applied to the hosted project, so in-re
 - `20260909130000_accept_inbound_event.sql`
 - `20260909140000_inbound_maintenance.sql`
 - `20260909150000_inbound_review_fixes.sql`
+- `20260909160000_inbound_work_heartbeat.sql`
 
 **Once the first hosted deployment of these files begins, treat every applied migration as immutable.**
 
@@ -146,6 +147,7 @@ Apply **in this order**, additive, on a backup-verified project:
 2. `20260909130000_accept_inbound_event.sql`
 3. `20260909140000_inbound_maintenance.sql`
 4. `20260909150000_inbound_review_fixes.sql`
+5. `20260909160000_inbound_work_heartbeat.sql`
 
 `20260908120000_add_external_integrations.sql` is already on the live project.
 
@@ -276,4 +278,4 @@ Only after the disposable path is green. Existing production connections stay `i
 
 ## After hosted apply
 
-New inbound schema changes are a **new** additive migration. Never edit `20260909120000`, `20260909130000`, `20260909140000` or `20260909150000` once they have been applied hosted.
+New inbound schema changes are a **new** additive migration. Never edit `20260909120000`, `20260909130000`, `20260909140000`, `20260909150000` or `20260909160000` once they have been applied hosted.

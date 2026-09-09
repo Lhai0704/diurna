@@ -13,6 +13,7 @@ import {
   claimInboundWorkOf,
   completeInboundWork,
   deferInboundWork,
+  startInboundWorkHeartbeat,
   withConnectionInboundLock,
 } from "../_shared/inbound_work.ts";
 import { runMaintenance, WORK_TYPES } from "../_shared/maintenance.ts";
@@ -40,8 +41,12 @@ async function processAvailableWork(limit = 20): Promise<number> {
     const payload = (work.payload ?? {}) as Record<string, unknown>;
     const connectionId = String(work.connection_id ?? "");
     const workType = String(work.work_type ?? "");
+    const heartbeat = startInboundWorkHeartbeat(work.id);
     try {
       const outcome = await withConnectionInboundLock(connectionId, async () => {
+        if (heartbeat.lost()) {
+          throw new Error("lease_lost");
+        }
         if (workType === "notion_page") {
           return await processNotionPageWork({
             connectionId,
@@ -86,6 +91,9 @@ async function processAvailableWork(limit = 20): Promise<number> {
         }
         return { result: "ok" };
       });
+      if (heartbeat.lost()) {
+        throw new Error("lease_lost");
+      }
       if (outcome.result === "deferred") {
         await deferInboundWork(work.id);
         processed += 1;
@@ -104,6 +112,8 @@ async function processAvailableWork(limit = 20): Promise<number> {
         console.error("inbound worker failed", message);
       }
       await completeInboundWork(work.id, message);
+    } finally {
+      heartbeat.stop();
     }
   }
   return processed;

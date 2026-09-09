@@ -139,3 +139,42 @@ export async function completeInboundWork(
   `;
   return rows[0].result as Record<string, unknown>;
 }
+
+export async function heartbeatInboundWork(
+  id: string,
+  extend = "3 minutes",
+): Promise<Record<string, unknown>> {
+  const rows = await db()`
+    select integrations.heartbeat_inbound_work(${id}::uuid, ${extend}::interval) as result
+  `;
+  return rows[0].result as Record<string, unknown>;
+}
+
+export function startInboundWorkHeartbeat(
+  workId: string,
+  args?: {
+    intervalMs?: number;
+    heartbeat?: (id: string) => Promise<Record<string, unknown>>;
+  },
+): { stop: () => void; lost: () => boolean } {
+  let lost = false;
+  const heartbeat = args?.heartbeat ?? heartbeatInboundWork;
+  const tick = async () => {
+    try {
+      const result = await heartbeat(workId);
+      if (result.result !== "ok") {
+        lost = true;
+      }
+    } catch {
+      lost = true;
+    }
+  };
+  const timer = setInterval(() => {
+    void tick();
+  }, args?.intervalMs ?? 30_000);
+  void tick();
+  return {
+    stop: () => clearInterval(timer),
+    lost: () => lost,
+  };
+}

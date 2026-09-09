@@ -1900,13 +1900,42 @@ begin
 end;
 $$;
 
+create or replace function integrations.heartbeat_inbound_work(
+  p_id uuid,
+  p_extend interval default interval '3 minutes'
+) returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, integrations
+as $$
+declare work integrations.inbound_work%rowtype;
+begin
+  update integrations.inbound_work
+     set locked_until = now() + coalesce(p_extend, interval '3 minutes'),
+         updated_at = now()
+   where id = p_id
+     and status = 'processing'
+   returning * into work;
+  if not found then
+    return jsonb_build_object('result', 'ignored', 'reason', 'not_processing');
+  end if;
+  return jsonb_build_object(
+    'result', 'ok',
+    'id', work.id,
+    'locked_until', work.locked_until
+  );
+end;
+$$;
+
 revoke all on function integrations.defer_inbound_work(uuid, interval) from public, anon, authenticated;
 revoke all on function integrations.purge_inbound_events(interval) from public, anon, authenticated;
 revoke all on function integrations.consume_handshake_arm(text, boolean) from public, anon, authenticated;
+revoke all on function integrations.heartbeat_inbound_work(uuid, interval) from public, anon, authenticated;
 grant execute on function integrations.claim_inbound_work_of(text[]) to postgres, service_role;
 grant execute on function integrations.accept_inbound_event(text, text, uuid, text, text, jsonb) to postgres, service_role;
 grant execute on function integrations.defer_inbound_work(uuid, interval) to postgres, service_role;
 grant execute on function integrations.purge_inbound_events(interval) to postgres, service_role;
 grant execute on function integrations.consume_handshake_arm(text, boolean) to postgres, service_role;
+grant execute on function integrations.heartbeat_inbound_work(uuid, interval) to postgres, service_role;
 
 commit;

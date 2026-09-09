@@ -37,6 +37,57 @@ export function legacyExportedNotionTitle(row: Record<string, unknown>): string 
   return String(row.content ?? row.title ?? "").slice(0, 2000);
 }
 
+export function omitLegacyRemoteTitle(args: {
+  entityType: string;
+  localTitle: string;
+  localContent: string;
+  patch: Record<string, unknown>;
+}): Record<string, unknown> {
+  const remoteTitle = String(args.patch.title ?? "");
+  if (
+    !("title" in args.patch) ||
+    !isLegacyMemoDiaryTitle({
+      entityType: args.entityType,
+      localTitle: args.localTitle,
+      localContent: args.localContent,
+      remoteTitle,
+    })
+  ) {
+    return args.patch;
+  }
+  const next = { ...args.patch };
+  delete next.title;
+  return next;
+}
+
+export async function patchNotionPageTitle(args: {
+  token: string;
+  pageId: string;
+  title: string;
+  fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
+}): Promise<{ lastEditedTime: string | null }> {
+  const fetchImpl = args.fetchImpl ?? fetch;
+  const response = await fetchImpl(`https://api.notion.com/v1/pages/${args.pageId}`, {
+    method: "PATCH",
+    headers: notionHeaders(args.token),
+    body: JSON.stringify({
+      properties: {
+        title: {
+          title: [{
+            type: "text",
+            text: { content: args.title.slice(0, 2000) || "Untitled" },
+          }],
+        },
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`notion_title_patch_${response.status}`);
+  }
+  const payload = await response.json() as { last_edited_time?: string };
+  return { lastEditedTime: payload.last_edited_time ?? null };
+}
+
 export function isLegacyMemoDiaryTitle(args: {
   entityType: string;
   localTitle: string;

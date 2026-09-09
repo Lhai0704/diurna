@@ -11,7 +11,7 @@ import {
   type NotionBlock,
   type NotionPage,
 } from "./notion_import.ts";
-import { notionHeaders } from "./notion_export.ts";
+import { notionHeaders, omitLegacyRemoteTitle } from "./notion_export.ts";
 
 export type NotionFetch = (
   input: string,
@@ -48,23 +48,30 @@ async function clearLinkOutboundHold(connectionId: string, pageId: string): Prom
   `;
 }
 
-async function currentContent(
+async function currentEntity(
   entityType: string,
   entityId: string,
-): Promise<string | undefined> {
+): Promise<{ title: string; content: string }> {
   if (entityType === "inbox_items") {
     const rows = await db()`select content from public.inbox_items where id = ${entityId}::uuid`;
-    return rows[0]?.content as string | undefined;
+    return { title: "", content: String(rows[0]?.content ?? "") };
   }
   if (entityType === "memos") {
-    const rows = await db()`select content from public.memos where id = ${entityId}::uuid`;
-    return rows[0]?.content as string | undefined;
+    const rows = await db()`
+      select title, content from public.memos where id = ${entityId}::uuid
+    `;
+    return {
+      title: String(rows[0]?.title ?? ""),
+      content: String(rows[0]?.content ?? ""),
+    };
   }
-  if (entityType === "diary_entries") {
-    const rows = await db()`select content from public.diary_entries where id = ${entityId}::uuid`;
-    return rows[0]?.content as string | undefined;
-  }
-  return undefined;
+  const rows = await db()`
+    select title, content from public.diary_entries where id = ${entityId}::uuid
+  `;
+  return {
+    title: String(rows[0]?.title ?? ""),
+    content: String(rows[0]?.content ?? ""),
+  };
 }
 
 async function listBlockChildren(
@@ -203,11 +210,12 @@ export async function processNotionPageWork(args: {
       args.pageId,
       fetchImpl,
     );
+  const entity = await currentEntity(link.entity_type, link.entity_id);
   const imported = importNotionPage({
     entityType: link.entity_type,
     page,
     blocks,
-    currentContent: await currentContent(link.entity_type, link.entity_id),
+    currentContent: entity.content,
   });
 
   if (imported.kind === "remote_deleted") {
@@ -239,13 +247,19 @@ export async function processNotionPageWork(args: {
     return { result: frozen.result, reason: frozen.reason };
   }
 
+  const patch = omitLegacyRemoteTitle({
+    entityType: link.entity_type,
+    localTitle: entity.title,
+    localContent: entity.content,
+    patch: imported.patch,
+  });
   const applied = await applyExternalChange({
     connectionId: args.connectionId,
     entityType: link.entity_type,
     entityId: link.entity_id,
     externalId: link.external_id,
     operation: "update",
-    patch: imported.patch,
+    patch,
     remoteSnapshot: imported.remoteSnapshot,
     providerUpdatedAt: imported.lastEditedTime,
   });

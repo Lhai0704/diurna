@@ -73,8 +73,9 @@ Deno.test("legacy exporter Memo title matching content is not bootstrap_remote_d
     },
     blocks: [paragraph("hello"), paragraph("world")],
   });
-  assertEquals(decision.action, "ready");
-  if (decision.action === "ready") {
+  assertEquals(decision.action, "migrate_title");
+  if (decision.action === "migrate_title") {
+    assertEquals(decision.remainingDrift, false);
     assertEquals(decision.imported.patch.title, "Note");
   }
 });

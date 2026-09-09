@@ -125,4 +125,35 @@ begin
   end if;
 end $$;
 
+-- Heartbeat keeps a waiting processing lease from being reclaimed.
+do $$
+declare a uuid;
+declare b uuid;
+declare hb jsonb;
+declare n int;
+begin
+  insert into integrations.inbound_work (
+    connection_id, provider, work_type, dedup_key, status, attempts, locked_until
+  ) values (
+    '21000000-0000-0000-0000-000000000050',
+    'notion', 'bootstrap_notion', 'lease-a', 'processing', 1, now() - interval '1 minute'
+  ) returning id into a;
+  insert into integrations.inbound_work (
+    connection_id, provider, work_type, dedup_key, status, attempts, locked_until
+  ) values (
+    '21000000-0000-0000-0000-000000000050',
+    'notion', 'notion_page', 'lease-b', 'processing', 1, now() - interval '1 minute'
+  ) returning id into b;
+  hb := integrations.heartbeat_inbound_work(b, interval '3 minutes');
+  if hb->>'result' <> 'ok' then raise exception 'heartbeat failed %', hb; end if;
+  n := integrations.reclaim_stale_inbound_work();
+  if n < 1 then raise exception 'expired A was not reclaimed'; end if;
+  if (select status from integrations.inbound_work where id = a) <> 'pending' then
+    raise exception 'A still processing after reclaim';
+  end if;
+  if (select status from integrations.inbound_work where id = b) <> 'processing' then
+    raise exception 'live waiting worker B was reclaimed';
+  end if;
+end $$;
+
 rollback;
