@@ -182,6 +182,10 @@ String inboundResultLabel(String? result) {
   };
 }
 
+String conflictRecurrenceBlockedLabel() {
+  return 'Google 重复事件目前无法自动处理。不会改写外部事件，也不会导入到 Diurna。请在日历中改为非重复事件后再同步。';
+}
+
 String inboundReasonLabel(String reason) {
   return switch (reason) {
     'unsupported_content' => '不支持的 Notion 正文',
@@ -224,6 +228,7 @@ class ExternalConflictSummary {
     required this.reason,
     required this.localRevision,
     required this.lastSyncedRevision,
+    this.canKeepLocal = true,
     required this.canKeepLocalPush,
     required this.canUseRemote,
     this.entityLabel,
@@ -240,6 +245,7 @@ class ExternalConflictSummary {
   final String reason;
   final int localRevision;
   final int lastSyncedRevision;
+  final bool canKeepLocal;
   final bool canKeepLocalPush;
   final bool canUseRemote;
   final String? entityLabel;
@@ -258,6 +264,7 @@ class ExternalConflictSummary {
       localRevision: IntegrationConnection._asInt(map['local_revision']) ?? 0,
       lastSyncedRevision:
           IntegrationConnection._asInt(map['last_synced_revision']) ?? 0,
+      canKeepLocal: map['can_keep_local'] != false,
       canKeepLocalPush: map['can_keep_local_push'] != false,
       canUseRemote: map['can_use_remote'] != false,
       entityLabel: map['entity_label'] as String?,
@@ -323,6 +330,7 @@ String conflictResolveErrorLabel(String? code) {
   return switch (code) {
     'STALE_CONFLICT' => '本地已变化，请刷新后重新选择',
     'UNSUPPORTED_REMOTE' => '外部内容不受支持，不能导入',
+    'UNSUPPORTED_RECURRENCE' => 'Google 重复事件目前无法自动处理',
     'PROVIDER_UNAVAILABLE' => '暂时无法读取外部数据',
     'PROVIDER_WRITE_FAILED' => '写入外部失败，冲突仍保留',
     'PROVIDER_VERIFY_FAILED' => '外部写入未完全生效，请重试',

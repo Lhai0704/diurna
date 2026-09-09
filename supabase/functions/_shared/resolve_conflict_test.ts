@@ -36,6 +36,32 @@ Deno.test("keep_local on unsupported still pushes Diurna", () => {
   assertEquals(decision, { action: "push_then_keep_local" });
 });
 
+Deno.test("keep_local on timed Google events may convert to all-day", () => {
+  const decision = decideConflictResolution({
+    loadResult: "ready",
+    choice: "keep_local",
+    liveKind: "unsupported_timed_event",
+  });
+  assertEquals(decision, { action: "push_then_keep_local" });
+});
+
+Deno.test("unsupported_recurrence is not resolvable by either side", () => {
+  const keep = decideConflictResolution({
+    loadResult: "ready",
+    choice: "keep_local",
+    liveKind: "unsupported_recurrence",
+  });
+  const useRemote = decideConflictResolution({
+    loadResult: "ready",
+    choice: "use_remote",
+    liveKind: "unsupported_recurrence",
+  });
+  assertEquals(keep, { action: "error", code: "UNSUPPORTED_RECURRENCE" });
+  assertEquals(useRemote, { action: "error", code: "UNSUPPORTED_RECURRENCE" });
+  assertEquals(keep.action === "push_then_keep_local", false);
+  assertEquals(useRemote.action === "apply_then_use_remote", false);
+});
+
 Deno.test("keep_local on remote_deleted accepts freeze without recreate", () => {
   const decision = decideConflictResolution({
     loadResult: "ready",
@@ -72,20 +98,12 @@ Deno.test("use_remote refuses unsupported content", () => {
   assertEquals(decision, { action: "error", code: "UNSUPPORTED_REMOTE" });
 });
 
-Deno.test("use_remote refuses timed and recurring Google events", () => {
+Deno.test("use_remote refuses timed Google events", () => {
   assertEquals(
     decideConflictResolution({
       loadResult: "ready",
       choice: "use_remote",
       liveKind: "unsupported_timed_event",
-    }),
-    { action: "error", code: "UNSUPPORTED_REMOTE" },
-  );
-  assertEquals(
-    decideConflictResolution({
-      loadResult: "ready",
-      choice: "use_remote",
-      liveKind: "unsupported_recurrence",
     }),
     { action: "error", code: "UNSUPPORTED_REMOTE" },
   );
@@ -133,6 +151,11 @@ Deno.test("malformed expected revision is rejected", () => {
   assertEquals(parseExpectedRevision(0), 0);
   assertEquals(parseExpectedRevision("3"), 3);
   assertEquals(parseExpectedRevision("0"), 0);
+  assertEquals(parseExpectedRevision(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+  assertEquals(parseExpectedRevision(String(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER);
+  assertEquals(parseExpectedRevision(Number.MAX_SAFE_INTEGER + 1), null);
+  assertEquals(parseExpectedRevision("9007199254740992"), null);
+  assertEquals(parseExpectedRevision("90071992547409910"), null);
   assertEquals(parseExpectedRevision(1.5), null);
   assertEquals(parseExpectedRevision("01"), null);
   assertEquals(parseExpectedRevision("-1"), null);

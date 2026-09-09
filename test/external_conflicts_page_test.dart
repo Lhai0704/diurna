@@ -88,6 +88,46 @@ void main() {
     expect(find.textContaining('secret'), findsNothing);
   });
 
+  testWidgets('recurring Google events disable both resolve actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          integrationRepositoryProvider.overrideWithValue(
+            _FakeRepo([
+              const ExternalConflictSummary(
+                id: 'c-recurring',
+                connectionId: 'g1',
+                provider: 'google',
+                entityType: 'calendar_events',
+                entityId: 'e-recurring',
+                reason: 'unsupported_recurrence',
+                localRevision: 1,
+                lastSyncedRevision: 1,
+                canKeepLocal: false,
+                canKeepLocalPush: false,
+                canUseRemote: false,
+                blockedReason: 'unsupported_recurrence',
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: ExternalConflictsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final keepLocal = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '使用 Diurna'),
+    );
+    final useRemote = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, '使用外部'),
+    );
+    expect(keepLocal.onPressed, isNull);
+    expect(useRemote.onPressed, isNull);
+    expect(find.textContaining('无法自动处理'), findsOneWidget);
+  });
+
   testWidgets('unsupported remote disables Use External', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

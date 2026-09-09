@@ -47,11 +47,17 @@ insert into public.diary_entries (
 
 insert into public.calendar_events (
   id, user_id, event_date, title, note, is_completed, revision
-) values (
-  '22000000-0000-0000-0000-000000000194',
-  '10000000-0000-0000-0000-000000000190',
-  '2027-03-01', 'Warranty', null, false, 1
-);
+) values
+  (
+    '22000000-0000-0000-0000-000000000194',
+    '10000000-0000-0000-0000-000000000190',
+    '2027-03-01', 'Warranty', null, false, 1
+  ),
+  (
+    '22000000-0000-0000-0000-000000000195',
+    '10000000-0000-0000-0000-000000000190',
+    '2027-04-01', 'Standup', null, false, 1
+  );
 
 insert into public.external_sync_links (
   user_id, connection_id, provider, entity_type, entity_id, external_id,
@@ -86,6 +92,12 @@ insert into public.external_sync_links (
     '21000000-0000-0000-0000-000000000191',
     'google', 'calendar_events', '22000000-0000-0000-0000-000000000194', 'gcal-1',
     1, 'synced', 'conflict', false
+  ),
+  (
+    '10000000-0000-0000-0000-000000000190',
+    '21000000-0000-0000-0000-000000000191',
+    'google', 'calendar_events', '22000000-0000-0000-0000-000000000195', 'gcal-recurring',
+    1, 'synced', 'conflict', true
   );
 
 insert into public.external_sync_conflicts (
@@ -136,6 +148,15 @@ insert into public.external_sync_conflicts (
     'open', 'bootstrap_remote_drift', 1, 1,
     '{"title":"Warranty"}'::jsonb,
     '{"patch":{"title":"Warranty remote","event_date":"2027-03-01"}}'::jsonb
+  ),
+  (
+    '23000000-0000-0000-0000-000000000195',
+    '10000000-0000-0000-0000-000000000190',
+    '21000000-0000-0000-0000-000000000191',
+    'google', 'calendar_events', '22000000-0000-0000-0000-000000000195', 'gcal-recurring',
+    'open', 'unsupported_recurrence', 1, 1,
+    '{"title":"Standup"}'::jsonb,
+    '{"recurrence":["RRULE:FREQ=DAILY"]}'::jsonb
   );
 
 -- authenticated cannot execute resolver finishers or read snapshots.
@@ -175,7 +196,7 @@ declare n int;
   recorded bigint;
 begin
   select count(*) into n from public.external_sync_conflict_summaries;
-  if n <> 5 then
+  if n <> 6 then
     raise exception 'summary view count %', n;
   end if;
   select local_revision, recorded_local_revision into n, recorded
@@ -422,8 +443,14 @@ begin
 end $$;
 
 -- Summaries omit snapshot keys and include field categories.
+-- Recurrence is not resolvable: both actions disabled, conflict stays open.
 do $$
 declare r jsonb;
+  elem jsonb;
+  st text;
+  inbound text;
+  hold boolean;
+  rev bigint;
 begin
   r := integrations.list_open_conflict_summaries(
     '10000000-0000-0000-0000-000000000190',
@@ -434,6 +461,42 @@ begin
   end if;
   if r::text like '%local_snapshot%' or r::text like '%remote_snapshot%' then
     raise exception 'summaries leaked snapshots';
+  end if;
+  select value into elem
+    from jsonb_array_elements(r)
+   where value->>'id' = '23000000-0000-0000-0000-000000000195';
+  if elem is null then
+    raise exception 'recurrence conflict missing from summaries';
+  end if;
+  if (elem->>'can_keep_local')::boolean is not false then
+    raise exception 'recurrence can_keep_local %', elem;
+  end if;
+  if (elem->>'can_keep_local_push')::boolean is not false then
+    raise exception 'recurrence can_keep_local_push %', elem;
+  end if;
+  if (elem->>'can_use_remote')::boolean is not false then
+    raise exception 'recurrence can_use_remote %', elem;
+  end if;
+  if elem->>'blocked_reason' <> 'unsupported_recurrence' then
+    raise exception 'recurrence blocked_reason %', elem;
+  end if;
+  select status into st
+    from public.external_sync_conflicts
+   where id = '23000000-0000-0000-0000-000000000195';
+  if st <> 'open' then
+    raise exception 'recurrence conflict resolved %', st;
+  end if;
+  select inbound_state, outbound_hold into inbound, hold
+    from public.external_sync_links
+   where entity_id = '22000000-0000-0000-0000-000000000195';
+  if inbound <> 'conflict' or hold is not true then
+    raise exception 'recurrence link mutated % %', inbound, hold;
+  end if;
+  select revision into rev
+    from public.calendar_events
+   where id = '22000000-0000-0000-0000-000000000195';
+  if rev <> 1 then
+    raise exception 'recurrence local revision mutated %', rev;
   end if;
 end $$;
 

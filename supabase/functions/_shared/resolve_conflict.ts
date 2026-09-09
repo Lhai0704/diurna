@@ -61,6 +61,11 @@ export function decideConflictResolution(args: {
   if (args.liveKind === "fetch_failed") {
     return { action: "error", code: "PROVIDER_UNAVAILABLE" };
   }
+  // Recurring Google events cannot be PATCHed to Diurna all-day without
+  // clearing recurrence or detaching instances, which this MVP does not do.
+  if (args.liveKind === "unsupported_recurrence") {
+    return { action: "error", code: "UNSUPPORTED_RECURRENCE" };
+  }
   if (args.choice === "keep_local") {
     if (args.liveKind === "remote_deleted") {
       return { action: "finish_keep_local", acceptRemoteGone: true };
@@ -72,8 +77,7 @@ export function decideConflictResolution(args: {
   }
   if (
     args.liveKind === "unsupported_content" ||
-    args.liveKind === "unsupported_timed_event" ||
-    args.liveKind === "unsupported_recurrence"
+    args.liveKind === "unsupported_timed_event"
   ) {
     return { action: "error", code: "UNSUPPORTED_REMOTE" };
   }
@@ -101,6 +105,7 @@ export function safeConflictPayload(row: Record<string, unknown>): Record<string
     created_at: row.created_at,
     entity_label: row.entity_label ?? null,
     field_categories: row.field_categories ?? [],
+    can_keep_local: row.can_keep_local !== false,
     can_keep_local_push: row.can_keep_local_push === true,
     can_use_remote: row.can_use_remote !== false,
     blocked_reason: row.blocked_reason ?? null,
@@ -115,11 +120,18 @@ export function isUuid(value: string): boolean {
 }
 
 export function parseExpectedRevision(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      return null;
+    }
     return value;
   }
   if (typeof value === "string" && /^(0|[1-9]\d*)$/.test(value)) {
-    return Number(value);
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      return null;
+    }
+    return parsed;
   }
   return null;
 }
@@ -619,7 +631,10 @@ export async function resolveExternalConflict(args: {
         ok: false,
         result: "error",
         error: { code: decision.code },
-        status: decision.code === "UNSUPPORTED_REMOTE" ? 409 : 400,
+        status: decision.code === "UNSUPPORTED_REMOTE" ||
+            decision.code === "UNSUPPORTED_RECURRENCE"
+          ? 409
+          : 400,
       };
     }
 

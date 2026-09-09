@@ -66,7 +66,12 @@ class ExternalConflictsPage extends ConsumerWidget {
                           '外部条目已删除。选择“使用 Diurna”会保留本地副本并停止同步该条；不会从 Diurna 删除。',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      if (!item.canUseRemote)
+                      if (!item.canKeepLocal)
+                        Text(
+                          conflictRecurrenceBlockedLabel(),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        )
+                      else if (!item.canUseRemote)
                         Text(
                           inboundReasonLabel(
                             item.blockedReason ?? 'unsupported_content',
@@ -91,12 +96,17 @@ class ExternalConflictsPage extends ConsumerWidget {
                           spacing: 8,
                           children: [
                             FilledButton(
-                              onPressed: () => ref
-                                  .read(integrationControllerProvider.notifier)
-                                  .resolveConflict(
-                                    item,
-                                    'keep_local',
-                                  ),
+                              onPressed: item.canKeepLocal
+                                  ? () => ref
+                                        .read(
+                                          integrationControllerProvider
+                                              .notifier,
+                                        )
+                                        .resolveConflict(
+                                          item,
+                                          'keep_local',
+                                        )
+                                  : null,
                               child: const Text('使用 Diurna'),
                             ),
                             OutlinedButton(

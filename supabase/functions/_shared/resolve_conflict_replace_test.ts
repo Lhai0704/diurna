@@ -4,7 +4,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { GoogleSession } from "./google_auth.ts";
 import type { NotionBlock } from "./notion_import.ts";
+import { googleEventBody } from "./google_export.ts";
+import { importGoogleEvent } from "./google_import.ts";
 import {
+  decideConflictResolution,
   freezeLocalSnapshot,
   listAllTopLevelBlocks,
   pushExistingGoogle,
@@ -364,4 +367,63 @@ Deno.test("Google post-write mapped mismatch fails verification", async () => {
     Error,
     "PROVIDER_VERIFY_FAILED",
   );
+});
+
+Deno.test("unsupported_recurrence never PATCHes Google and does not mutate local", async () => {
+  const row = {
+    id: "22000000-0000-0000-0000-000000000195",
+    title: "Standup",
+    event_date: "2027-04-01",
+    note: null,
+    is_completed: false,
+    revision: 1,
+  } as Record<string, unknown> & { id: string };
+  const imported = importGoogleEvent({
+    id: "gcal-recurring",
+    summary: "Standup",
+    start: { date: "2027-04-01" },
+    recurrence: ["RRULE:FREQ=DAILY"],
+    etag: "\"recurring\"",
+  });
+  assertEquals(imported.kind, "unsupported_recurrence");
+  assertEquals("recurrence" in googleEventBody(row, "gcal-recurring"), false);
+
+  let patched = false;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    if ((init?.method ?? "GET").toUpperCase() === "PATCH") {
+      patched = true;
+      throw new Error("recurrence must not PATCH");
+    }
+    return json({
+      id: "gcal-recurring",
+      summary: "Standup",
+      start: { date: "2027-04-01" },
+      recurrence: ["RRULE:FREQ=DAILY"],
+      etag: "\"recurring\"",
+    });
+  };
+  const decision = decideConflictResolution({
+    loadResult: "ready",
+    choice: "keep_local",
+    liveKind: imported.kind === "unsupported_recurrence"
+      ? "unsupported_recurrence"
+      : "drift",
+  });
+  if (decision.action === "push_then_keep_local") {
+    await pushExistingGoogle({
+      session: new GoogleSession(
+        "conn",
+        { access_token: "a", refresh_token: "r" },
+        futureExpiry(),
+        fetchImpl,
+      ),
+      calendarId: "primary",
+      externalId: "gcal-recurring",
+      row,
+      ifMatchEtag: "\"recurring\"",
+    });
+  }
+  assertEquals(decision, { action: "error", code: "UNSUPPORTED_RECURRENCE" });
+  assertEquals(patched, false);
+  assertEquals(row.revision, 1);
 });

@@ -2253,9 +2253,11 @@ begin
         coalesce(lr.local_row, c.local_snapshot, '{}'::jsonb),
         coalesce(c.remote_snapshot->'patch', '{}'::jsonb)
       ) as field_categories,
+      (c.reason is distinct from 'unsupported_recurrence') as can_keep_local,
       (c.reason not in (
         'remote_deleted',
-        'remote_deleted_with_local_edit'
+        'remote_deleted_with_local_edit',
+        'unsupported_recurrence'
       )) as can_keep_local_push,
       (c.reason not in (
         'unsupported_content',
