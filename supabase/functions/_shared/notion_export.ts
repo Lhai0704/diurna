@@ -1,4 +1,8 @@
 import type { JsonObject } from "./lease_logic.ts";
+import {
+  MAX_NOTION_TEXT,
+  notionParagraphsFromContent,
+} from "./notion_text.ts";
 
 export const NOTION_VERSION = "2026-03-11";
 
@@ -148,11 +152,11 @@ export function notionBody(module: string, row: Record<string, unknown>) {
   if (!content) {
     return [];
   }
-  return content.split(/\n+/).slice(0, 100).map((line) => ({
+  return notionParagraphsFromContent(content).map((line) => ({
     object: "block",
     type: "paragraph",
     paragraph: {
-      rich_text: [{ type: "text", text: { content: line.slice(0, 2000) } }],
+      rich_text: [{ type: "text", text: { content: line.slice(0, MAX_NOTION_TEXT) } }],
     },
   }));
 }

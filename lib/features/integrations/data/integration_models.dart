@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class IntegrationConnection {
   const IntegrationConnection({
     required this.id,
@@ -317,13 +319,39 @@ class ConflictResolveResult {
   final String? errorCode;
 
   factory ConflictResolveResult.fromMap(Map<String, dynamic> map) {
-    final error = map['error'];
     return ConflictResolveResult(
       ok: map['ok'] == true,
       result: map['result'] as String?,
-      errorCode: error is Map ? error['code'] as String? : null,
+      errorCode: conflictResolveErrorCodeFromDetails(map),
     );
   }
+}
+
+/// Pulls `error.code` from a Functions JSON body or FunctionException.details.
+/// Unknown or secret-like values are ignored so the UI can use the generic label.
+String? conflictResolveErrorCodeFromDetails(Object? details) {
+  Object? payload = details;
+  if (payload is String) {
+    final trimmed = payload.trim();
+    if (!trimmed.startsWith('{')) {
+      return null;
+    }
+    try {
+      payload = jsonDecode(trimmed);
+    } on Object {
+      return null;
+    }
+  }
+  if (payload is Map) {
+    final error = payload['error'];
+    if (error is Map) {
+      final code = error['code'];
+      if (code is String) {
+        return safeInboundCode(code);
+      }
+    }
+  }
+  return null;
 }
 
 String conflictResolveErrorLabel(String? code) {
@@ -333,7 +361,7 @@ String conflictResolveErrorLabel(String? code) {
     'UNSUPPORTED_RECURRENCE' => 'Google 重复事件目前无法自动处理',
     'PROVIDER_UNAVAILABLE' => '暂时无法读取外部数据',
     'PROVIDER_WRITE_FAILED' => '写入外部失败，冲突仍保留',
-    'PROVIDER_VERIFY_FAILED' => '外部写入未完全生效，请重试',
+    'PROVIDER_VERIFY_FAILED' => '外部写入尚未通过校验，请刷新后重试',
     'PROVIDER_VERSION_CONFLICT' => '外部已有更新，请刷新后重新选择',
     'REAUTH_REQUIRED' => '授权已过期，请重新连接',
     'INBOUND_DISABLED' => '入站未启用',

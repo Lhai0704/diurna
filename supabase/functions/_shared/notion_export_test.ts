@@ -60,6 +60,29 @@ Deno.test("empty memo content exports no children", () => {
   assertEquals(notionBody("memos", { content: "" }), []);
 });
 
+function bodyTexts(children: unknown[]): string[] {
+  return children.map((child) => {
+    const block = child as { paragraph: { rich_text: Array<{ text: { content: string } }> } };
+    return block.paragraph.rich_text[0].text.content;
+  });
+}
+
+Deno.test("CRLF, LF, and lone CR export the same paragraph blocks without stray CR", () => {
+  const lf = notionBody("diary_entries", { content: "a\nb\n" });
+  const crlf = notionBody("diary_entries", { content: "a\r\nb\r\n" });
+  const cr = notionBody("diary_entries", { content: "a\rb\r" });
+  const mixed = notionBody("memos", { content: "a\r\nb\n" });
+  assertEquals(bodyTexts(lf), ["a", "b", ""]);
+  assertEquals(crlf, lf);
+  assertEquals(cr, lf);
+  assertEquals(mixed, lf);
+  for (const children of [lf, crlf, cr, mixed]) {
+    const encoded = JSON.stringify(children);
+    assertEquals(encoded.includes("\\r"), false);
+    assertEquals(encoded.includes("\r"), false);
+  }
+});
+
 Deno.test("legacy page bootstrap then body-only inbound keeps Diurna title", async () => {
   const local = { title: "Note", content: "hello\n\nworld" };
   const afterBootstrap = omitLegacyRemoteTitle({
