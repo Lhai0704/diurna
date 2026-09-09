@@ -3,7 +3,6 @@ import { db } from "./db.ts";
 import { GoogleSession, ReauthRequiredError } from "./google_auth.ts";
 import { googleEventBody } from "./google_export.ts";
 import { importGoogleEvent, type GoogleEvent } from "./google_import.ts";
-import { withConnectionInboundLock } from "./inbound_work.ts";
 import { patchMatchesRow } from "./mapped.ts";
 import {
   importNotionPage,
@@ -16,7 +15,7 @@ import {
   notionProperties,
   omitLegacyRemoteTitle,
 } from "./notion_export.ts";
-import { listBlockChildren } from "./notion_worker.ts";
+import postgres from "npm:postgres@3.4.5";
 
 export type ResolveChoice = "keep_local" | "use_remote";
 
@@ -97,6 +96,7 @@ export function safeConflictPayload(row: Record<string, unknown>): Record<string
     status: row.status,
     reason: row.reason,
     local_revision: row.local_revision,
+    recorded_local_revision: row.recorded_local_revision ?? null,
     last_synced_revision: row.last_synced_revision,
     created_at: row.created_at,
     entity_label: row.entity_label ?? null,
@@ -107,11 +107,132 @@ export function safeConflictPayload(row: Record<string, unknown>): Record<string
   };
 }
 
-type SqlJson = Record<string, unknown>;
+export const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function jsonArg(value: Record<string, unknown>) {
-  return db().json(JSON.parse(JSON.stringify(value)));
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
 }
+
+export function parseExpectedRevision(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^(0|[1-9]\d*)$/.test(value)) {
+    return Number(value);
+  }
+  return null;
+}
+
+export function freezeLocalSnapshot(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.freeze(JSON.parse(JSON.stringify(row)) as Record<string, unknown>);
+}
+
+export async function listAllTopLevelBlocks(args: {
+  token: string;
+  pageId: string;
+  fetchImpl: typeof fetch;
+}): Promise<NotionBlock[]> {
+  const blocks: NotionBlock[] = [];
+  let cursor: string | null = null;
+  do {
+    const url = new URL(`https://api.notion.com/v1/blocks/${args.pageId}/children`);
+    url.searchParams.set("page_size", "100");
+    if (cursor) {
+      url.searchParams.set("start_cursor", cursor);
+    }
+    const response = await args.fetchImpl(url.toString(), {
+      headers: notionHeaders(args.token),
+    });
+    if (!response.ok) {
+      throw new Error(`notion_list_${response.status}`);
+    }
+    const payload = await response.json() as {
+      results?: NotionBlock[];
+      has_more?: boolean;
+      next_cursor?: string | null;
+    };
+    blocks.push(...(payload.results ?? []));
+    cursor = payload.has_more ? payload.next_cursor ?? null : null;
+  } while (cursor);
+  return blocks;
+}
+
+export async function replaceExistingNotionPage(args: {
+  token: string;
+  entityType: string;
+  externalId: string;
+  row: Record<string, unknown> & { id: string };
+  fetchImpl: typeof fetch;
+}): Promise<{ updatedAt: string }> {
+  const properties = notionProperties(args.entityType, args.row);
+  const patched = await args.fetchImpl(`https://api.notion.com/v1/pages/${args.externalId}`, {
+    method: "PATCH",
+    headers: notionHeaders(args.token),
+    body: JSON.stringify({ properties }),
+  });
+  if (patched.status === 404) {
+    throw new Error("REMOTE_GONE");
+  }
+  if (!patched.ok) {
+    throw new Error(`notion_patch_${patched.status}`);
+  }
+  if (args.entityType !== "inbox_items") {
+    const existing = await listAllTopLevelBlocks({
+      token: args.token,
+      pageId: args.externalId,
+      fetchImpl: args.fetchImpl,
+    });
+    for (const block of existing) {
+      const blockId = typeof block.id === "string" ? block.id : "";
+      if (!blockId) {
+        throw new Error("notion_list_malformed");
+      }
+      const deleted = await args.fetchImpl(`https://api.notion.com/v1/blocks/${blockId}`, {
+        method: "DELETE",
+        headers: notionHeaders(args.token),
+      });
+      if (!deleted.ok && deleted.status !== 404) {
+        throw new Error(`notion_delete_${deleted.status}`);
+      }
+    }
+    const children = notionBody(args.entityType, args.row);
+    if (children.length > 0) {
+      const appended = await args.fetchImpl(
+        `https://api.notion.com/v1/blocks/${args.externalId}/children`,
+        {
+          method: "PATCH",
+          headers: notionHeaders(args.token),
+          body: JSON.stringify({ children }),
+        },
+      );
+      if (!appended.ok) {
+        throw new Error(`notion_body_${appended.status}`);
+      }
+    }
+  }
+  const verified = await fetchLiveNotion({
+    token: args.token,
+    entityType: args.entityType,
+    externalId: args.externalId,
+    currentRow: args.row,
+    fetchImpl: args.fetchImpl,
+  });
+  if (verified.kind === "remote_deleted") {
+    throw new Error("REMOTE_GONE");
+  }
+  if (verified.kind !== "equal") {
+    throw new Error("PROVIDER_VERIFY_FAILED");
+  }
+  if (!verified.updatedAt) {
+    throw new Error("PROVIDER_VERIFY_FAILED");
+  }
+  return { updatedAt: verified.updatedAt };
+}
+
+type SqlJson = Record<string, unknown>;
 
 function sqlResult(rows: unknown): SqlJson {
   const list = rows as Array<{ result?: unknown }>;
@@ -186,9 +307,24 @@ async function fetchLiveNotion(args: {
       updatedAt: page.last_edited_time ?? null,
     };
   }
-  const blocks: NotionBlock[] = args.entityType === "inbox_items"
-    ? []
-    : await listBlockChildren(args.token, args.externalId, args.fetchImpl);
+  let blocks: NotionBlock[] = [];
+  if (args.entityType !== "inbox_items") {
+    try {
+      blocks = await listAllTopLevelBlocks({
+        token: args.token,
+        pageId: args.externalId,
+        fetchImpl: args.fetchImpl,
+      });
+    } catch {
+      return {
+        kind: "fetch_failed",
+        patch: {},
+        remoteSnapshot: {},
+        etag: null,
+        updatedAt: null,
+      };
+    }
+  }
   const imported = importNotionPage({
     entityType: args.entityType as "inbox_items" | "memos" | "diary_entries",
     page,
@@ -304,86 +440,89 @@ async function fetchLiveGoogle(args: {
   };
 }
 
-async function pushExistingNotion(args: {
-  token: string;
-  entityType: string;
-  externalId: string;
-  row: Record<string, unknown> & { id: string };
-  fetchImpl: typeof fetch;
-}): Promise<{ etag: string | null; updatedAt: string | null }> {
-  const properties = notionProperties(args.entityType, args.row);
-  const patched = await args.fetchImpl(`https://api.notion.com/v1/pages/${args.externalId}`, {
-    method: "PATCH",
-    headers: notionHeaders(args.token),
-    body: JSON.stringify({ properties }),
-  });
-  if (patched.status === 404) {
-    throw new Error("REMOTE_GONE");
-  }
-  if (!patched.ok) {
-    throw new Error(`notion_patch_${patched.status}`);
-  }
-  if (args.entityType !== "inbox_items") {
-    await (async () => {
-      const listed = await args.fetchImpl(
-        `https://api.notion.com/v1/blocks/${args.externalId}/children?page_size=100`,
-        { headers: notionHeaders(args.token) },
-      );
-      if (listed.ok) {
-        const payload = await listed.json() as { results?: Array<{ id?: string }> };
-        for (const block of payload.results ?? []) {
-          if (typeof block.id !== "string") {
-            continue;
-          }
-          await args.fetchImpl(`https://api.notion.com/v1/blocks/${block.id}`, {
-            method: "DELETE",
-            headers: notionHeaders(args.token),
-          });
-        }
-      }
-      const children = notionBody(args.entityType, args.row);
-      if (children.length === 0) {
-        return;
-      }
-      const appended = await args.fetchImpl(
-        `https://api.notion.com/v1/blocks/${args.externalId}/children`,
-        {
-          method: "PATCH",
-          headers: notionHeaders(args.token),
-          body: JSON.stringify({ children }),
-        },
-      );
-      if (!appended.ok) {
-        throw new Error(`notion_body_${appended.status}`);
-      }
-    })();
-  }
-  const payload = await patched.json() as { last_edited_time?: string };
-  return { etag: null, updatedAt: payload.last_edited_time ?? null };
-}
-
-async function pushExistingGoogle(args: {
+export async function pushExistingGoogle(args: {
   session: GoogleSession;
   calendarId: string;
   externalId: string;
   row: Record<string, unknown> & { id: string };
+  ifMatchEtag?: string | null;
 }): Promise<{ etag: string | null; updatedAt: string | null }> {
   const url =
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.externalId)}`;
   const body = googleEventBody(args.row, args.externalId);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (args.ifMatchEtag) {
+    headers["If-Match"] = args.ifMatchEtag;
+  }
   const patched = await args.session.fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   if (patched.status === 404) {
     throw new Error("REMOTE_GONE");
   }
+  if (patched.status === 412) {
+    throw new Error("PROVIDER_VERSION_CONFLICT");
+  }
   if (!patched.ok) {
     throw new Error(`google_patch_${patched.status}`);
   }
-  const payload = await patched.json() as { etag?: string; updated?: string };
-  return { etag: payload.etag ?? null, updatedAt: payload.updated ?? null };
+  const verified = await fetchLiveGoogle({
+    session: args.session,
+    calendarId: args.calendarId,
+    externalId: args.externalId,
+    currentRow: args.row,
+  });
+  if (verified.kind === "remote_deleted") {
+    throw new Error("REMOTE_GONE");
+  }
+  if (verified.kind !== "equal") {
+    throw new Error("PROVIDER_VERIFY_FAILED");
+  }
+  return { etag: verified.etag, updatedAt: verified.updatedAt };
+}
+
+function jsonArg(sql: ReturnType<typeof db>, value: Record<string, unknown>) {
+  return sql.json(JSON.parse(JSON.stringify(value)));
+}
+
+export type ResolveHooks = {
+  afterLockedSnapshot?: (row: Record<string, unknown>) => Promise<void>;
+};
+
+async function withResolverTransaction<T>(
+  connectionId: string,
+  fn: (tx: ReturnType<typeof db>) => Promise<T>,
+): Promise<T> {
+  const url = Deno.env.get("SUPABASE_DB_URL");
+  if (!url) {
+    throw new Error("SUPABASE_DB_URL is not configured");
+  }
+  // Dedicated session: inbound connection lock, then one transaction that
+  // takes user_id:0 and holds the selected row through provider I/O + finish.
+  const session = postgres(url, { prepare: false, max: 1 });
+  try {
+    await session`select pg_advisory_lock(hashtextextended(${connectionId}::text, 1))`;
+    try {
+      return await session.begin(
+        async (tx) => await fn(tx as unknown as ReturnType<typeof db>),
+      ) as T;
+    } finally {
+      await session`select pg_advisory_unlock(hashtextextended(${connectionId}::text, 1))`;
+    }
+  } finally {
+    await session.end({ timeout: 5 });
+  }
+}
+
+function providerError(code: string): {
+  ok: false;
+  result: string;
+  error: { code: string };
+  status: number;
+} {
+  return { ok: false, result: "error", error: { code }, status: 409 };
 }
 
 export async function resolveExternalConflict(args: {
@@ -392,36 +531,23 @@ export async function resolveExternalConflict(args: {
   choice: ResolveChoice;
   expectedLocalRevision: number;
   fetchImpl?: typeof fetch;
+  hooks?: ResolveHooks;
 }): Promise<{ ok: boolean; result: string; error?: { code: string }; status?: number }> {
   const fetchImpl = args.fetchImpl ?? fetch;
-  const preview = sqlResult(await db()`
-    select integrations.load_conflict_for_resolve(
-      ${args.userId}::uuid,
-      ${args.conflictId}::uuid,
-      ${args.expectedLocalRevision}::bigint
-    ) as result
-  `);
-  const loadResult = String(preview.result ?? "not_found");
-  if (loadResult !== "ready" && loadResult !== "already_resolved") {
-    const decided = decideConflictResolution({
-      loadResult,
-      choice: args.choice,
-      liveKind: "equal",
-    });
-    if (decided.action === "error") {
-      return { ok: false, result: "error", error: { code: decided.code }, status: 409 };
-    }
-  }
-  if (loadResult === "already_resolved") {
-    return { ok: true, result: "already_resolved" };
-  }
-  const connectionId = String((preview.conflict as SqlJson | undefined)?.connection_id ?? "");
+  const lookupRows = await db()`
+    select connection_id
+      from public.external_sync_conflicts
+     where id = ${args.conflictId}::uuid
+       and user_id = ${args.userId}::uuid
+     limit 1
+  `;
+  const connectionId = String(lookupRows[0]?.connection_id ?? "");
   if (!connectionId) {
     return { ok: false, result: "error", error: { code: "NOT_FOUND" }, status: 404 };
   }
 
-  return await withConnectionInboundLock(connectionId, async () => {
-    const loaded = sqlResult(await db()`
+  return await withResolverTransaction(connectionId, async (tx) => {
+    const loaded = sqlResult(await tx`
       select integrations.load_conflict_for_resolve(
         ${args.userId}::uuid,
         ${args.conflictId}::uuid,
@@ -444,7 +570,12 @@ export async function resolveExternalConflict(args: {
       }
     }
     const conflict = loaded.conflict as SqlJson;
-    const currentRow = loaded.current_row as Record<string, unknown> & { id: string };
+    const currentRow = freezeLocalSnapshot(
+      loaded.current_row as Record<string, unknown>,
+    ) as Record<string, unknown> & { id: string };
+    if (args.hooks?.afterLockedSnapshot) {
+      await args.hooks.afterLockedSnapshot(currentRow);
+    }
     const container = (loaded.container ?? {}) as Record<string, unknown>;
     const provider = String(conflict.provider);
     const entityType = String(conflict.entity_type);
@@ -464,14 +595,14 @@ export async function resolveExternalConflict(args: {
         fetchImpl,
       });
     } else {
-      const session = new GoogleSession(
+      const googleSession = new GoogleSession(
         connectionId,
         credential.bundle,
         credential.accessExpiresAt,
       );
       const calendarId = String(container.calendar_id ?? "primary");
       live = await fetchLiveGoogle({
-        session,
+        session: googleSession,
         calendarId,
         externalId,
         currentRow,
@@ -497,33 +628,35 @@ export async function resolveExternalConflict(args: {
     if (decision.action === "push_then_keep_local") {
       try {
         if (provider === "notion") {
-          const written = await pushExistingNotion({
+          const written = await replaceExistingNotionPage({
             token: credential.bundle.access_token,
             entityType,
             externalId,
             row: currentRow,
             fetchImpl,
           });
-          etag = written.etag;
+          etag = null;
           updatedAt = written.updatedAt;
         } else {
-          const session = new GoogleSession(
+          const googleSession = new GoogleSession(
             connectionId,
             credential.bundle,
             credential.accessExpiresAt,
           );
           const written = await pushExistingGoogle({
-            session,
+            session: googleSession,
             calendarId: String(container.calendar_id ?? "primary"),
             externalId,
             row: currentRow,
+            ifMatchEtag: live.etag,
           });
           etag = written.etag;
           updatedAt = written.updatedAt;
         }
       } catch (error) {
-        if (error instanceof Error && error.message === "REMOTE_GONE") {
-          const gone = sqlResult(await db()`
+        const message = error instanceof Error ? error.message : "";
+        if (message === "REMOTE_GONE") {
+          const gone = sqlResult(await tx`
             select integrations.finish_conflict_keep_local(
               ${args.userId}::uuid,
               ${args.conflictId}::uuid,
@@ -535,9 +668,23 @@ export async function resolveExternalConflict(args: {
           `);
           return { ok: gone.result === "resolved_local", result: String(gone.result) };
         }
+        if (
+          message === "PROVIDER_VERIFY_FAILED" ||
+          message === "PROVIDER_VERSION_CONFLICT" ||
+          message.startsWith("notion_") ||
+          message.startsWith("google_")
+        ) {
+          return providerError(
+            message === "PROVIDER_VERSION_CONFLICT"
+              ? "PROVIDER_VERSION_CONFLICT"
+              : message === "PROVIDER_VERIFY_FAILED"
+              ? "PROVIDER_VERIFY_FAILED"
+              : "PROVIDER_WRITE_FAILED",
+          );
+        }
         throw error;
       }
-      const finished = sqlResult(await db()`
+      const finished = sqlResult(await tx`
         select integrations.finish_conflict_keep_local(
           ${args.userId}::uuid,
           ${args.conflictId}::uuid,
@@ -551,7 +698,7 @@ export async function resolveExternalConflict(args: {
     }
 
     if (decision.action === "finish_keep_local") {
-      const finished = sqlResult(await db()`
+      const finished = sqlResult(await tx`
         select integrations.finish_conflict_keep_local(
           ${args.userId}::uuid,
           ${args.conflictId}::uuid,
@@ -565,14 +712,14 @@ export async function resolveExternalConflict(args: {
     }
 
     if (decision.action === "finish_use_remote_gone") {
-      const finished = sqlResult(await db()`
+      const finished = sqlResult(await tx`
         select integrations.finish_conflict_use_remote(
           ${args.userId}::uuid,
           ${args.conflictId}::uuid,
           ${args.expectedLocalRevision}::bigint,
           ${"remote_deleted"},
-          ${jsonArg({})}::jsonb,
-          ${jsonArg(live.remoteSnapshot)}::jsonb,
+          ${jsonArg(tx, {})}::jsonb,
+          ${jsonArg(tx, live.remoteSnapshot)}::jsonb,
           ${etag},
           ${updatedAt}::timestamptz,
           ${false}
@@ -582,14 +729,14 @@ export async function resolveExternalConflict(args: {
     }
 
     const mappedEqual = decision.action === "finish_use_remote_equal";
-    const finished = sqlResult(await db()`
+    const finished = sqlResult(await tx`
       select integrations.finish_conflict_use_remote(
         ${args.userId}::uuid,
         ${args.conflictId}::uuid,
         ${args.expectedLocalRevision}::bigint,
         ${"update"},
-        ${jsonArg(live.patch)}::jsonb,
-        ${jsonArg(live.remoteSnapshot)}::jsonb,
+        ${jsonArg(tx, live.patch)}::jsonb,
+        ${jsonArg(tx, live.remoteSnapshot)}::jsonb,
         ${etag},
         ${updatedAt}::timestamptz,
         ${mappedEqual}

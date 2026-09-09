@@ -2116,21 +2116,42 @@ revoke select on table public.external_sync_conflicts from authenticated;
 drop view if exists public.external_sync_conflict_summaries;
 create view public.external_sync_conflict_summaries as
 select
-  id,
-  user_id,
-  connection_id,
-  provider,
-  entity_type,
-  entity_id,
-  external_id,
-  status,
-  reason,
-  local_revision,
-  last_synced_revision,
-  created_at,
-  resolved_at
-from public.external_sync_conflicts
-where user_id = auth.uid();
+  c.id,
+  c.user_id,
+  c.connection_id,
+  c.provider,
+  c.entity_type,
+  c.entity_id,
+  c.external_id,
+  c.status,
+  c.reason,
+  coalesce(
+    case c.entity_type
+      when 'diary_entries' then (
+        select r.revision from public.diary_entries r
+         where r.id = c.entity_id and r.user_id = c.user_id
+      )
+      when 'calendar_events' then (
+        select r.revision from public.calendar_events r
+         where r.id = c.entity_id and r.user_id = c.user_id
+      )
+      when 'memos' then (
+        select r.revision from public.memos r
+         where r.id = c.entity_id and r.user_id = c.user_id
+      )
+      when 'inbox_items' then (
+        select r.revision from public.inbox_items r
+         where r.id = c.entity_id and r.user_id = c.user_id
+      )
+    end,
+    c.local_revision
+  ) as local_revision,
+  c.local_revision as recorded_local_revision,
+  c.last_synced_revision,
+  c.created_at,
+  c.resolved_at
+from public.external_sync_conflicts c
+where c.user_id = auth.uid();
 
 revoke all on public.external_sync_conflict_summaries from public, anon, authenticated;
 grant select on public.external_sync_conflict_summaries to authenticated, service_role, postgres;
@@ -2222,7 +2243,8 @@ begin
       c.entity_id,
       c.status,
       c.reason,
-      c.local_revision,
+      coalesce((lr.local_row->>'revision')::bigint, c.local_revision) as local_revision,
+      c.local_revision as recorded_local_revision,
       c.last_synced_revision,
       c.created_at,
       integrations._conflict_entity_label(c.entity_type, c.entity_id, c.user_id) as entity_label,
@@ -2295,7 +2317,33 @@ declare
   link public.external_sync_links%rowtype;
   current_row jsonb;
   current_revision bigint;
+  lock_connection_id uuid;
 begin
+  select c.connection_id into lock_connection_id
+    from public.external_sync_conflicts c
+   where c.id = p_conflict_id
+     and c.user_id = p_user_id;
+  if not found then
+    return jsonb_build_object('result', 'not_found');
+  end if;
+
+  -- Connection row first, then protocol-v2 user key, then conflict/link/entity.
+  select * into conn
+    from public.integration_connections
+   where id = lock_connection_id
+     for update;
+  if not found or conn.user_id is distinct from p_user_id then
+    return jsonb_build_object('result', 'not_found');
+  end if;
+  if conn.status is distinct from 'connected' then
+    return jsonb_build_object('result', 'not_connected');
+  end if;
+  if conn.inbound_status not in ('active', 'degraded', 'bootstrapping') then
+    return jsonb_build_object('result', 'inbound_disabled');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(conn.user_id::text, 0));
+
   select * into conflict
     from public.external_sync_conflicts
    where id = p_conflict_id
@@ -2304,19 +2352,6 @@ begin
   if not found then
     return jsonb_build_object('result', 'not_found');
   end if;
-
-  select * into conn
-    from public.integration_connections
-   where id = conflict.connection_id
-     for update;
-  if not found or conn.status is distinct from 'connected' then
-    return jsonb_build_object('result', 'not_connected');
-  end if;
-  if conn.inbound_status not in ('active', 'degraded', 'bootstrapping') then
-    return jsonb_build_object('result', 'inbound_disabled');
-  end if;
-
-  perform pg_advisory_xact_lock(hashtextextended(conn.user_id::text, 0));
 
   if conflict.status is distinct from 'open' then
     return jsonb_build_object(
@@ -2344,12 +2379,11 @@ begin
     return jsonb_build_object('result', 'missing_entity');
   end if;
   current_revision := (current_row->>'revision')::bigint;
-  if current_revision is distinct from p_expected_local_revision
-     or current_revision is distinct from conflict.local_revision then
+  if current_revision is distinct from p_expected_local_revision then
     return jsonb_build_object(
       'result', 'stale',
       'current_revision', current_revision,
-      'conflict_local_revision', conflict.local_revision,
+      'recorded_local_revision', conflict.local_revision,
       'expected_local_revision', p_expected_local_revision
     );
   end if;
@@ -2365,6 +2399,7 @@ begin
       'external_id', conflict.external_id,
       'reason', conflict.reason,
       'local_revision', conflict.local_revision,
+      'recorded_local_revision', conflict.local_revision,
       'last_synced_revision', conflict.last_synced_revision,
       'remote_version', conflict.remote_version
     ),

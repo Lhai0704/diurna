@@ -179,6 +179,7 @@ class IntegrationRepository {
       'conflict_id': conflictId,
       'choice': choice,
       'expected_local_revision': expectedLocalRevision,
+      'expected_current_local_revision': expectedLocalRevision,
     });
     return ConflictResolveResult.fromMap(result);
   }

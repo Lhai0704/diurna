@@ -3,6 +3,9 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   decideConflictResolution,
+  freezeLocalSnapshot,
+  isUuid,
+  parseExpectedRevision,
   safeConflictPayload,
 } from "./resolve_conflict.ts";
 
@@ -123,6 +126,35 @@ Deno.test("fetch failure does not pick a side", () => {
     liveKind: "fetch_failed",
   });
   assertEquals(decision, { action: "error", code: "PROVIDER_UNAVAILABLE" });
+});
+
+Deno.test("malformed expected revision is rejected", () => {
+  assertEquals(parseExpectedRevision(2), 2);
+  assertEquals(parseExpectedRevision(0), 0);
+  assertEquals(parseExpectedRevision("3"), 3);
+  assertEquals(parseExpectedRevision("0"), 0);
+  assertEquals(parseExpectedRevision(1.5), null);
+  assertEquals(parseExpectedRevision("01"), null);
+  assertEquals(parseExpectedRevision("-1"), null);
+  assertEquals(parseExpectedRevision("1.0"), null);
+  assertEquals(parseExpectedRevision(""), null);
+  assertEquals(parseExpectedRevision(null), null);
+});
+
+Deno.test("malformed UUIDs are rejected without requiring RFC version", () => {
+  assertEquals(isUuid("23000000-0000-0000-0000-000000000190"), true);
+  assertEquals(isUuid("not-a-uuid"), false);
+  assertEquals(isUuid("23000000-0000-0000-0000-00000000019"), false);
+});
+
+Deno.test("frozen snapshot is a deep copy", () => {
+  const source = { title: "Local", nested: { n: 1 } };
+  const frozen = freezeLocalSnapshot(source);
+  source.title = "mutated";
+  source.nested.n = 9;
+  assertEquals(frozen.title, "Local");
+  assertEquals((frozen.nested as { n: number }).n, 1);
+  assertEquals(Object.isFrozen(frozen), true);
 });
 
 Deno.test("safe payload omits snapshots and tokens", () => {

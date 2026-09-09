@@ -8,7 +8,9 @@ import { stopGoogleWatches } from "../_shared/google_watch.ts";
 import { settingsInvalidateShortCircuit } from "../_shared/lease_logic.ts";
 import { db } from "../_shared/db.ts";
 import {
+  isUuid,
   listOpenConflicts,
+  parseExpectedRevision,
   resolveExternalConflict,
 } from "../_shared/resolve_conflict.ts";
 
@@ -158,6 +160,9 @@ Deno.serve(async (req) => {
 
     if (action === "list_conflicts") {
       const connectionId = typeof body.connection_id === "string" ? body.connection_id : null;
+      if (connectionId != null && !isUuid(connectionId)) {
+        return json({ ok: false, error: { code: "VALIDATION" } }, 400);
+      }
       const conflicts = await listOpenConflicts({ userId, connectionId });
       return json({ ok: true, conflicts });
     }
@@ -165,11 +170,14 @@ Deno.serve(async (req) => {
     if (action === "resolve_conflict") {
       const conflictId = body.conflict_id as string | undefined;
       const choice = body.choice as "keep_local" | "use_remote" | undefined;
-      const expected = body.expected_local_revision;
+      const expected = parseExpectedRevision(
+        body.expected_current_local_revision ?? body.expected_local_revision,
+      );
       if (
         typeof conflictId !== "string" ||
+        !isUuid(conflictId) ||
         (choice !== "keep_local" && choice !== "use_remote") ||
-        typeof expected !== "number"
+        expected == null
       ) {
         return json({ ok: false, error: { code: "VALIDATION" } }, 400);
       }

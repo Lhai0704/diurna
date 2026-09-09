@@ -172,26 +172,100 @@ end $$;
 
 do $$
 declare n int;
+  recorded bigint;
 begin
   select count(*) into n from public.external_sync_conflict_summaries;
   if n <> 5 then
     raise exception 'summary view count %', n;
   end if;
+  select local_revision, recorded_local_revision into n, recorded
+    from public.external_sync_conflict_summaries
+   where id = '23000000-0000-0000-0000-000000000193';
+  if n <> 3 then
+    raise exception 'view current revision %', n;
+  end if;
+  if recorded <> 1 then
+    raise exception 'view recorded revision %', recorded;
+  end if;
 end $$;
 
 reset role;
 
--- Stale local revision.
+-- Freshness: old expected revision is stale; refresh is not auto-resolve;
+-- a new explicit decision at the current revision can proceed.
 do $$
 declare r jsonb;
+  listed jsonb;
+  current_rev bigint;
+  recorded bigint;
+  st text;
+  lock_count int;
 begin
-  r := integrations.load_conflict_for_resolve(
+  r := integrations.finish_conflict_keep_local(
     '10000000-0000-0000-0000-000000000190',
     '23000000-0000-0000-0000-000000000193',
-    1
+    1, 'etag-stale', '2026-09-09T10:05:00Z', false
   );
   if r->>'result' <> 'stale' then
     raise exception 'expected stale got %', r;
+  end if;
+  select status into st
+    from public.external_sync_conflicts
+   where id = '23000000-0000-0000-0000-000000000193';
+  if st <> 'open' then
+    raise exception 'stale finish must leave conflict open %', st;
+  end if;
+
+  listed := integrations.list_open_conflict_summaries(
+    '10000000-0000-0000-0000-000000000190',
+    '21000000-0000-0000-0000-000000000190'
+  );
+  select (elem->>'local_revision')::bigint, (elem->>'recorded_local_revision')::bigint
+    into current_rev, recorded
+    from jsonb_array_elements(listed) elem
+   where elem->>'id' = '23000000-0000-0000-0000-000000000193';
+  if current_rev <> 3 then
+    raise exception 'summary current revision %', current_rev;
+  end if;
+  if recorded <> 1 then
+    raise exception 'recorded revision should stay 1 got %', recorded;
+  end if;
+  select status into st
+    from public.external_sync_conflicts
+   where id = '23000000-0000-0000-0000-000000000193';
+  if st <> 'open' then
+    raise exception 'refresh must not auto-resolve %', st;
+  end if;
+
+  r := integrations.load_conflict_for_resolve(
+    '10000000-0000-0000-0000-000000000190',
+    '23000000-0000-0000-0000-000000000193',
+    3
+  );
+  if r->>'result' <> 'ready' then
+    raise exception 'refreshed expected current revision should load %', r;
+  end if;
+  if (r->'conflict'->>'local_revision')::bigint <> 1 then
+    raise exception 'conflict.local_revision is historical %', r;
+  end if;
+  select count(*) into lock_count
+    from pg_locks
+   where pid = pg_backend_pid()
+     and locktype = 'advisory';
+  if lock_count < 1 then
+    raise exception 'user mutation advisory lock not held after load';
+  end if;
+
+  r := integrations.finish_conflict_keep_local(
+    '10000000-0000-0000-0000-000000000190',
+    '23000000-0000-0000-0000-000000000193',
+    3, 'etag-stale', '2026-09-09T10:05:00Z', false
+  );
+  if r->>'result' <> 'resolved_local' then
+    raise exception 'fresh decision after local edit %', r;
+  end if;
+  if (r->>'revision')::bigint <> 3 then
+    raise exception 'resolved at current revision %', r;
   end if;
 end $$;
 

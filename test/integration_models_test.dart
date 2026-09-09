@@ -97,6 +97,9 @@ void main() {
     expect(conflictEntityTypeLabel(summary.entityType), '日记');
     expect(conflictFieldLabel('entry_date'), '日期');
     expect(conflictResolveErrorLabel('STALE_CONFLICT'), contains('刷新'));
+    expect(conflictResolveErrorLabel('PROVIDER_WRITE_FAILED'), contains('仍保留'));
+    expect(conflictResolveErrorLabel('PROVIDER_VERIFY_FAILED'), contains('重试'));
+    expect(conflictResolveErrorLabel('PROVIDER_VERSION_CONFLICT'), contains('刷新'));
   });
 
   test('safeInboundCode hides tokens and ciphertext', () {
