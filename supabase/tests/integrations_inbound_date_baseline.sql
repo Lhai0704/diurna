@@ -199,36 +199,7 @@ begin
   end if;
 end $$;
 
--- unsupported_content is not auto-dismissed by an equal baseline.
-do $$
-declare r jsonb;
-begin
-  r := integrations.bootstrap_link_version(
-    '21000000-0000-0000-0000-000000000180',
-    'diary_entries',
-    '22000000-0000-0000-0000-000000000182',
-    'page-unsupported',
-    null,
-    now(),
-    false,
-    null,
-    '{}'::jsonb,
-    '{}'::jsonb
-  );
-  if r->>'result' <> 'ready' then
-    raise exception 'unsupported equal %', r;
-  end if;
-  if (select status from public.external_sync_conflicts
-        where entity_id = '22000000-0000-0000-0000-000000000182') <> 'open' then
-    raise exception 'unsupported_content was dismissed';
-  end if;
-  if (select reason from public.external_sync_conflicts
-        where entity_id = '22000000-0000-0000-0000-000000000182') <> 'unsupported_content' then
-    raise exception 'unsupported reason changed';
-  end if;
-end $$;
-
--- Local revision past last_synced_revision does not dismiss.
+-- Local revision past last_synced_revision keeps bootstrap_remote_drift open.
 do $$
 declare r jsonb;
 begin
@@ -257,7 +228,44 @@ begin
   end if;
 end $$;
 
--- remote_deleted_with_local_edit is not auto-dismissed.
+-- unsupported_content stays frozen on a fresh equal baseline.
+do $$
+declare r jsonb;
+begin
+  r := integrations.bootstrap_link_version(
+    '21000000-0000-0000-0000-000000000180',
+    'diary_entries',
+    '22000000-0000-0000-0000-000000000182',
+    'page-unsupported',
+    null,
+    now(),
+    false,
+    null,
+    '{}'::jsonb,
+    '{}'::jsonb
+  );
+  if r->>'result' <> 'conflict' or r->>'reason' <> 'unsupported_content' then
+    raise exception 'unsupported equal %', r;
+  end if;
+  if (select status from public.external_sync_conflicts
+        where entity_id = '22000000-0000-0000-0000-000000000182') <> 'open' then
+    raise exception 'unsupported_content was dismissed';
+  end if;
+  if (select reason from public.external_sync_conflicts
+        where entity_id = '22000000-0000-0000-0000-000000000182') <> 'unsupported_content' then
+    raise exception 'unsupported reason changed';
+  end if;
+  if (select inbound_state from public.external_sync_links
+        where entity_id = '22000000-0000-0000-0000-000000000182') <> 'conflict' then
+    raise exception 'unsupported equal unfroze inbound_state';
+  end if;
+  if (select outbound_hold from public.external_sync_links
+        where entity_id = '22000000-0000-0000-0000-000000000182') is not true then
+    raise exception 'unsupported equal cleared outbound_hold';
+  end if;
+end $$;
+
+-- remote_deleted_with_local_edit stays frozen on a fresh equal baseline.
 do $$
 declare r jsonb;
 begin
@@ -273,7 +281,8 @@ begin
     '{}'::jsonb,
     '{}'::jsonb
   );
-  if r->>'result' <> 'ready' then
+  if r->>'result' <> 'conflict'
+     or r->>'reason' <> 'remote_deleted_with_local_edit' then
     raise exception 'deleted-edit equal %', r;
   end if;
   if (select status from public.external_sync_conflicts
@@ -284,6 +293,65 @@ begin
         where entity_id = '22000000-0000-0000-0000-000000000184')
        <> 'remote_deleted_with_local_edit' then
     raise exception 'deleted-edit reason changed';
+  end if;
+  if (select inbound_state from public.external_sync_links
+        where entity_id = '22000000-0000-0000-0000-000000000184') <> 'conflict' then
+    raise exception 'deleted-edit equal unfroze inbound_state';
+  end if;
+  if (select outbound_hold from public.external_sync_links
+        where entity_id = '22000000-0000-0000-0000-000000000184') is not true then
+    raise exception 'deleted-edit equal cleared outbound_hold';
+  end if;
+end $$;
+
+-- Non-bootstrap open conflicts are not rewritten by _open_conflict.
+do $$
+declare r jsonb;
+begin
+  r := integrations.bootstrap_link_version(
+    '21000000-0000-0000-0000-000000000180',
+    'diary_entries',
+    '22000000-0000-0000-0000-000000000182',
+    'page-unsupported',
+    null,
+    now(),
+    true,
+    'bootstrap_remote_drift',
+    '{}'::jsonb,
+    '{"title":"should not upsert"}'::jsonb
+  );
+  if r->>'result' <> 'conflict' or r->>'reason' <> 'unsupported_content' then
+    raise exception 'unsupported drift overwrite %', r;
+  end if;
+  if (select reason from public.external_sync_conflicts
+        where entity_id = '22000000-0000-0000-0000-000000000182'
+          and status = 'open') <> 'unsupported_content' then
+    raise exception 'unsupported reason overwritten on drift';
+  end if;
+
+  update public.diary_entries
+     set revision = 3
+   where id = '22000000-0000-0000-0000-000000000184';
+  r := integrations.bootstrap_link_version(
+    '21000000-0000-0000-0000-000000000180',
+    'diary_entries',
+    '22000000-0000-0000-0000-000000000184',
+    'page-deleted',
+    null,
+    now(),
+    false,
+    'bootstrap_remote_drift',
+    '{}'::jsonb,
+    '{}'::jsonb
+  );
+  if r->>'result' <> 'conflict'
+     or r->>'reason' <> 'remote_deleted_with_local_edit' then
+    raise exception 'deleted-edit advanced overwrite %', r;
+  end if;
+  if (select reason from public.external_sync_conflicts
+        where entity_id = '22000000-0000-0000-0000-000000000184'
+          and status = 'open') <> 'remote_deleted_with_local_edit' then
+    raise exception 'deleted-edit reason overwritten on advanced revision';
   end if;
 end $$;
 

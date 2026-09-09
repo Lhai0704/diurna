@@ -35,7 +35,12 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 6. `20260909170000_inbound_activation_gate.sql`
 7. `20260909180000_fix_inbound_date_baseline.sql`
 
-These inbound migrations are **not** on the hosted project yet. Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After the first hosted apply, those migration files are immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
+Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
+
+- `20260909120000`–`20260909170000` are **applied and immutable**
+- `20260909180000_fix_inbound_date_baseline.sql` is **review-only and not hosted yet**
+
+Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After a migration is applied hosted, that file is immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 
 Drift v4→v5 adds queue generation/group fields and sync metadata. Pending v4 operations with unknown baseline use expected revision -1 and become retained conflicts rather than silently taking the latest remote version. Legacy v1/v2 tasks are mapped to Inbox without deleting the original `local_tasks` table. Old calendar date-range rows and queue payloads are retained in `legacy_calendar_events` / `legacy_pending_sync_operations`; extra old fields are also included in the migrated note. Unsupported retired tasks operations are retained as legacy conflicts.
 

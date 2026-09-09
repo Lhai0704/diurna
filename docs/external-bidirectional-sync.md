@@ -102,20 +102,12 @@ Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test script
 
 ### Migration freeze
 
-The inbound migrations have **not** been applied to the hosted project, so in-repo edits to them were allowed during local development:
+Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- `20260909120000_add_external_inbound_sync.sql`
-- `20260909130000_accept_inbound_event.sql`
-- `20260909140000_inbound_maintenance.sql`
-- `20260909150000_inbound_review_fixes.sql`
-- `20260909160000_inbound_work_heartbeat.sql`
-- `20260909170000_inbound_activation_gate.sql`
+- **Applied and immutable:** `20260909120000`–`20260909170000`
+- **Review-only, not hosted yet:** `20260909180000_fix_inbound_date_baseline.sql`
 
-`20260909120000`–`20260909170000` are applied hosted and immutable. Date-baseline repair is a new additive file, not yet hosted:
-
-- `20260909180000_fix_inbound_date_baseline.sql`
-
-**Once the first hosted deployment of these files begins, treat every applied migration as immutable.**
+Never edit an already-applied migration. Create a new additive file instead.
 
 ```text
 never edit an already-applied migration
@@ -310,4 +302,4 @@ Only after the disposable path is green. Existing production connections stay `i
 
 ## After hosted apply
 
-New inbound schema changes are a **new** additive migration. Never edit `20260909120000`–`20260909170000` once they have been applied hosted. `20260909180000` is additive and must not be edited after its hosted apply.
+New inbound schema changes are a **new** additive migration. `20260909120000`–`20260909170000` are hosted and immutable. `20260909180000` is review-only until hosted; after that apply it is also immutable.
