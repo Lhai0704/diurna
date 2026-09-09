@@ -1,4 +1,6 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { FakeAdvisoryBackend, runWithLock } from "./inbound_lock.ts";
+import { runDeactivateInbound } from "./inbound_work.ts";
 import { shouldRenewWatch } from "./mapped.ts";
 import {
   authenticateGoogleNotification,
@@ -10,6 +12,8 @@ import {
   type ProviderWatch,
   type WatchPersistence,
 } from "./google_watch.ts";
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const watch = (overrides: Partial<ProviderWatch> = {}): ProviderWatch => ({
   id: "w1",
@@ -420,4 +424,82 @@ Deno.test("copySyncToken prefers the newest active watch", () => {
     ),
     "sync-new",
   );
+});
+
+Deno.test("locked deactivate waits out events.watch and leaves no live channel", async () => {
+  const { rows, calls, store } = memoryWatches([oldWatch]);
+  const backend = new FakeAdvisoryBackend();
+  const renewSession = backend.newSession();
+  const deactivateSession = backend.newSession();
+  let watchStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    watchStarted = resolve;
+  });
+  let resumeWatch!: () => void;
+  const resume = new Promise<void>((resolve) => {
+    resumeWatch = resolve;
+  });
+
+  const renew = runWithLock(renewSession, "conn-g", async () => {
+    calls.push("renew-lock-enter");
+    await renewGoogleWatch({
+      connectionId: "conn-g",
+      now: new Date("2026-09-09T12:00:00Z"),
+      store,
+      session: {
+        fetch: async (url) => {
+          assert(String(url).includes("/events/watch"));
+          calls.push("events.watch");
+          watchStarted();
+          await resume;
+          return new Response(
+            JSON.stringify({ resourceId: "res-new", expiration: "1790000000000" }),
+            { status: 200 },
+          );
+        },
+      },
+    });
+    calls.push("renew-lock-exit");
+  });
+
+  await started;
+  calls.push("deactivate-begin");
+  const deactivate = runDeactivateInbound("conn-g", {
+    withLock: (id, fn) => runWithLock(deactivateSession, id, fn),
+    deactivate: async () => {
+      calls.push("deactivate-sql");
+      return { ok: true, inbound_status: "disabled" };
+    },
+    afterDisable: async () => {
+      calls.push("stop-watches");
+      for (const row of rows) {
+        if (["creating", "active", "retiring"].includes(row.status)) {
+          row.status = "expired";
+          calls.push(`expire-after-deactivate:${row.channel_id}`);
+        }
+      }
+    },
+  }).then((result) => {
+    calls.push("deactivate-returned");
+    return result;
+  });
+
+  await wait(15);
+  assertEquals(calls.includes("deactivate-sql"), false);
+  resumeWatch();
+  await Promise.all([renew, deactivate]);
+
+  const activateAt = calls.indexOf("activate");
+  const sqlAt = calls.indexOf("deactivate-sql");
+  const returnedAt = calls.indexOf("deactivate-returned");
+  assert(activateAt >= 0);
+  assertEquals(sqlAt > activateAt, true);
+  assertEquals(sqlAt > calls.indexOf("renew-lock-exit"), true);
+  assertEquals(
+    rows.some((row) => row.status === "active" || row.status === "creating"),
+    false,
+  );
+  assertEquals(calls.slice(sqlAt).includes("events.watch"), false);
+  assertEquals(calls.slice(returnedAt + 1).includes("events.watch"), false);
+  assertEquals(calls.slice(returnedAt + 1).includes("persist_creating"), false);
 });

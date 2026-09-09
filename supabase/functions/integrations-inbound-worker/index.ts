@@ -14,8 +14,8 @@ import {
   activateInbound,
   claimInboundWorkOf,
   completeInboundWork,
-  deactivateInbound,
   deferInboundWork,
+  runDeactivateInbound,
   startInboundWorkHeartbeat,
   withConnectionInboundLock,
 } from "../_shared/inbound_work.ts";
@@ -175,19 +175,23 @@ Deno.serve(async (req) => {
         const result = await activateInbound(connectionId);
         return json({ ok: result.ok === true, ...result });
       }
-      const result = await deactivateInbound(connectionId);
-      const connection = await loadConnectionRow(connectionId);
-      if (connection?.provider === "google") {
-        const credential = await readCredential(connectionId);
-        const session = credential
-          ? new GoogleSession(
-            connectionId,
-            credential.bundle,
-            credential.accessExpiresAt,
-          )
-          : null;
-        await stopGoogleWatches(connectionId, session);
-      }
+      const result = await runDeactivateInbound(connectionId, {
+        afterDisable: async () => {
+          const connection = await loadConnectionRow(connectionId);
+          if (connection?.provider !== "google") {
+            return;
+          }
+          const credential = await readCredential(connectionId);
+          const session = credential
+            ? new GoogleSession(
+              connectionId,
+              credential.bundle,
+              credential.accessExpiresAt,
+            )
+            : null;
+          await stopGoogleWatches(connectionId, session);
+        },
+      });
       return json({ ok: result.ok === true, ...result });
     }
     const maintenance = await runMaintenance();

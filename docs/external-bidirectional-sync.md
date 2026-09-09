@@ -156,7 +156,7 @@ select integrations.activate_inbound('<uuid>');
 select integrations.deactivate_inbound('<uuid>');
 ```
 
-SQL `deactivate_inbound` returns the connection to `disabled`, clears holds, and marks pending/processing inbound work done. It does not call Google `channels.stop`. Use the worker `deactivate_inbound` action when the connection may have watches.
+SQL `deactivate_inbound` is DB-state only: it returns the connection to `disabled`, clears holds, and marks pending/processing inbound work done. It does **not** acquire the per-connection inbound lock, so it cannot wait for an in-flight `events.watch`, Notion PATCH, or other provider write, and it does not call Google `channels.stop`. Prefer the worker `deactivate_inbound` action, which takes the same lock as inbound work, then stops Google watches. Once that action returns, no previously running inbound operation for that connection can still create a watch or write to the provider.
 
 ### 1. Final local verification
 
@@ -301,7 +301,7 @@ Edit a linked paragraph-only page. Webhook → `notion_page` work → apply or `
 
 Only after the disposable path is green. Existing production connections stay `inbound_status=disabled` until each is **explicitly** activated. Do not activate all production connections in one step. Expect some `bootstrap_remote_drift` / `unsupported_content` / timed-event conflicts. That is success, not a reason to disable the whole connection.
 
-**Rollback:** `deactivate_inbound` on that production connection (SQL or worker action; the worker action also stops Google watches) or **断开**, which also drops export. Stopping cron prevents new apply. Do not rewrite Diurna rows to “undo” inbound; protocol v2 revisions must stay.
+**Rollback:** worker `deactivate_inbound` on that production connection (waits for in-flight inbound work, then stops Google watches). SQL-only `deactivate_inbound` is an emergency DB-state flip and cannot stop an already in-flight provider request. **断开** also drops export. Stopping cron prevents new apply. Do not rewrite Diurna rows to “undo” inbound; protocol v2 revisions must stay.
 
 ## After hosted apply
 

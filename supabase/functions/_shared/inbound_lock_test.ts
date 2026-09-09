@@ -4,7 +4,7 @@ import {
   FakeProcessingLease,
   runWithLock,
 } from "./inbound_lock.ts";
-import { startInboundWorkHeartbeat } from "./inbound_work.ts";
+import { runDeactivateInbound, startInboundWorkHeartbeat } from "./inbound_work.ts";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -98,4 +98,62 @@ Deno.test("reclaim still recovers a worker that stopped heartbeating", () => {
   assertEquals(dead.reclaim(4), true);
   assertEquals(dead.status, "pending");
   assertEquals(dead.heartbeat(5, 3), "ignored");
+});
+
+Deno.test("deactivate waits for in-flight provider I/O on the connection lock", async () => {
+  const backend = new FakeAdvisoryBackend();
+  const worker = backend.newSession();
+  const operator = backend.newSession();
+  const events: string[] = [];
+  let enteredIo!: () => void;
+  const inIo = new Promise<void>((resolve) => {
+    enteredIo = resolve;
+  });
+  let finishIo!: () => void;
+  const ioHold = new Promise<void>((resolve) => {
+    finishIo = resolve;
+  });
+
+  const workA = runWithLock(worker, "conn", async () => {
+    events.push("work-enter");
+    events.push("provider-io-start");
+    enteredIo();
+    await ioHold;
+    events.push("provider-io-done");
+    events.push("work-exit");
+  });
+
+  await inIo;
+  events.push("deactivate-begin");
+  const deactivate = runDeactivateInbound("conn", {
+    withLock: (id, fn) => runWithLock(operator, id, fn),
+    deactivate: async () => {
+      events.push("deactivate-sql");
+      return { ok: true, inbound_status: "disabled" };
+    },
+    afterDisable: async () => {
+      events.push("stop-watches");
+    },
+  }).then((result) => {
+    events.push("deactivate-returned");
+    return result;
+  });
+
+  await wait(15);
+  assertEquals(events.includes("deactivate-sql"), false);
+  assertEquals(events.includes("stop-watches"), false);
+  finishIo();
+  await Promise.all([workA, deactivate]);
+
+  const ioDoneAt = events.indexOf("provider-io-done");
+  const sqlAt = events.indexOf("deactivate-sql");
+  const returnedAt = events.indexOf("deactivate-returned");
+  assertEquals(ioDoneAt >= 0, true);
+  assertEquals(sqlAt > ioDoneAt, true);
+  assertEquals(events.indexOf("stop-watches") > sqlAt, true);
+  assertEquals(returnedAt > events.indexOf("stop-watches"), true);
+  assertEquals(
+    events.slice(returnedAt + 1).some((event) => event.startsWith("provider-")),
+    false,
+  );
 });

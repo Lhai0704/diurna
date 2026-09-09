@@ -168,6 +168,23 @@ export async function deactivateInbound(
   return rows[0].result as Record<string, unknown>;
 }
 
+export async function runDeactivateInbound(
+  connectionId: string,
+  deps: {
+    withLock?: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
+    deactivate?: (id: string) => Promise<Record<string, unknown>>;
+    afterDisable?: (id: string) => Promise<void>;
+  } = {},
+): Promise<Record<string, unknown>> {
+  const withLock = deps.withLock ?? withConnectionInboundLock;
+  const deactivate = deps.deactivate ?? deactivateInbound;
+  return await withLock(connectionId, async () => {
+    const result = await deactivate(connectionId);
+    await deps.afterDisable?.(connectionId);
+    return result;
+  });
+}
+
 export function startInboundWorkHeartbeat(
   workId: string,
   args?: {
