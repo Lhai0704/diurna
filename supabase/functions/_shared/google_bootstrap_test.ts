@@ -24,6 +24,22 @@ Deno.test("Google bootstrap equal mapped state is ready without using Diurna-onl
   assertEquals(decision.action, "ready");
 });
 
+Deno.test("Google bootstrap equal calendar date is ready when local event_date is a Date", () => {
+  const decision = decideGoogleBootstrapLink({
+    row: {
+      ...row,
+      event_date: new Date("2026-09-11T00:00:00.000Z"),
+    },
+    remote: {
+      id: "gcal-dentist",
+      summary: "Dentist",
+      description: "n",
+      start: { date: "2026-09-11" },
+    },
+  });
+  assertEquals(decision.action, "ready");
+});
+
 Deno.test("Google bootstrap remote drift is conflicted, not overwritten", () => {
   const decision = decideGoogleBootstrapLink({
     row,

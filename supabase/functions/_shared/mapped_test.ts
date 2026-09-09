@@ -24,6 +24,44 @@ Deno.test("patchMatchesRow ignores unspecified Diurna-only fields", () => {
   );
 });
 
+Deno.test("patchMatchesRow compares date-only fields as calendar dates", () => {
+  assertEquals(
+    patchMatchesRow(
+      { entry_date: new Date("2026-09-09T00:00:00.000Z"), title: "Day" },
+      { entry_date: "2026-09-09", title: "Day" },
+    ),
+    true,
+  );
+  assertEquals(
+    patchMatchesRow(
+      { event_date: "2026-09-09T15:04:05.000Z", title: "Task" },
+      { event_date: "2026-09-09", title: "Task" },
+    ),
+    true,
+  );
+  assertEquals(
+    patchMatchesRow(
+      { entry_date: "2026-09-08" },
+      { entry_date: "2026-09-09" },
+    ),
+    false,
+  );
+  assertEquals(
+    patchMatchesRow(
+      { title: "2026-09-09T15:04:05.000Z" },
+      { title: "2026-09-09" },
+    ),
+    false,
+  );
+  assertEquals(
+    patchMatchesRow(
+      { mood: null, is_completed: true, title: "A" },
+      { mood: null, is_completed: true, title: "A" },
+    ),
+    true,
+  );
+});
+
 Deno.test("shouldRenewWatch uses safety window and skips creating", () => {
   const now = new Date("2026-09-09T12:00:00Z");
   assertEquals(

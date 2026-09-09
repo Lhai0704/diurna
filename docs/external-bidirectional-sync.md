@@ -111,6 +111,10 @@ The inbound migrations have **not** been applied to the hosted project, so in-re
 - `20260909160000_inbound_work_heartbeat.sql`
 - `20260909170000_inbound_activation_gate.sql`
 
+`20260909120000`–`20260909170000` are applied hosted and immutable. Date-baseline repair is a new additive file, not yet hosted:
+
+- `20260909180000_fix_inbound_date_baseline.sql`
+
 **Once the first hosted deployment of these files begins, treat every applied migration as immutable.**
 
 ```text
@@ -174,6 +178,7 @@ Apply **in this order**, additive, on a backup-verified project:
 4. `20260909150000_inbound_review_fixes.sql`
 5. `20260909160000_inbound_work_heartbeat.sql`
 6. `20260909170000_inbound_activation_gate.sql`
+7. `20260909180000_fix_inbound_date_baseline.sql` (not hosted yet)
 
 `20260908120000_add_external_integrations.sql` is already on the live project.
 
@@ -305,4 +310,4 @@ Only after the disposable path is green. Existing production connections stay `i
 
 ## After hosted apply
 
-New inbound schema changes are a **new** additive migration. Never edit `20260909120000`–`20260909170000` once they have been applied hosted.
+New inbound schema changes are a **new** additive migration. Never edit `20260909120000`–`20260909170000` once they have been applied hosted. `20260909180000` is additive and must not be edited after its hosted apply.

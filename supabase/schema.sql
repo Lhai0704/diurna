@@ -1276,8 +1276,18 @@ begin
     return jsonb_build_object('result', 'conflict', 'reason', coalesce(p_reason, 'bootstrap_remote_drift'));
   end if;
 
+  update public.external_sync_conflicts
+     set status = 'dismissed',
+         resolved_at = clock_timestamp()
+   where connection_id = p_connection_id
+     and entity_type = p_entity_type
+     and entity_id = p_entity_id
+     and status = 'open'
+     and reason = 'bootstrap_remote_drift';
+
   update public.external_sync_links
      set inbound_state = 'ready',
+         outbound_hold = false,
          external_etag = p_provider_etag,
          external_updated_at = p_provider_updated_at,
          last_remote_event_at = now()

@@ -1,3 +1,23 @@
+/** Date-only mapped inbound fields. Do not treat arbitrary strings as dates. */
+export const DATE_ONLY_PATCH_KEYS = new Set(["entry_date", "event_date"]);
+
+export function calendarDateOnly(value: unknown): string | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s].*)?$/);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
 export function patchMatchesRow(
   row: Record<string, unknown>,
   patch: Record<string, unknown>,
@@ -15,6 +35,16 @@ export function patchMatchesRow(
         return false;
       }
       continue;
+    }
+    if (DATE_ONLY_PATCH_KEYS.has(key)) {
+      const left = calendarDateOnly(current);
+      const right = calendarDateOnly(value);
+      if (left != null && right != null) {
+        if (left !== right) {
+          return false;
+        }
+        continue;
+      }
     }
     if (String(current ?? "") !== String(value)) {
       return false;

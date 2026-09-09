@@ -22,6 +22,43 @@ const paragraph = (text: string): NotionBlock => ({
   },
 });
 
+Deno.test("Notion diary bootstrap equal calendar date is ready when local entry_date is a Date", () => {
+  const decision = decideNotionBootstrapPage({
+    entityType: "diary_entries",
+    entity: {
+      title: "Day",
+      content: "hello",
+      entry_date: new Date("2026-09-09T00:00:00.000Z"),
+      mood: "ok",
+      revision: 1,
+    },
+    page: {
+      last_edited_time: "2026-09-09T12:00:00.000Z",
+      properties: {
+        title: { title: [{ plain_text: "Day" }] },
+        Date: { date: { start: "2026-09-09" } },
+        Mood: {
+          rich_text: [{
+            type: "text",
+            plain_text: "ok",
+            text: { content: "ok" },
+            annotations: {
+              bold: false,
+              italic: false,
+              strikethrough: false,
+              underline: false,
+              code: false,
+              color: "default",
+            },
+          }],
+        },
+      },
+    },
+    blocks: [paragraph("hello")],
+  });
+  assertEquals(decision.action, "ready");
+});
+
 Deno.test("Notion bootstrap equal mapped state is ready", () => {
   const decision = decideNotionBootstrapPage({
     entityType: "memos",

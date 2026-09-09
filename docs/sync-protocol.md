@@ -33,6 +33,7 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 4. `20260909150000_inbound_review_fixes.sql`
 5. `20260909160000_inbound_work_heartbeat.sql`
 6. `20260909170000_inbound_activation_gate.sql`
+7. `20260909180000_fix_inbound_date_baseline.sql`
 
 These inbound migrations are **not** on the hosted project yet. Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After the first hosted apply, those migration files are immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 
