@@ -9,9 +9,12 @@ import {
   processGoogleCalendarGone,
   processGoogleIncrementalWork,
 } from "../_shared/google_worker.ts";
+import { stopGoogleWatches } from "../_shared/google_watch.ts";
 import {
+  activateInbound,
   claimInboundWorkOf,
   completeInboundWork,
+  deactivateInbound,
   deferInboundWork,
   startInboundWorkHeartbeat,
   withConnectionInboundLock,
@@ -47,6 +50,15 @@ async function processAvailableWork(limit = 20): Promise<number> {
         if (heartbeat.lost()) {
           throw new Error("lease_lost");
         }
+        const connection = await loadConnectionRow(connectionId);
+        const inboundStatus = String(connection?.inbound_status ?? "disabled");
+        if (
+          !connection ||
+          connection.status !== "connected" ||
+          inboundStatus === "disabled"
+        ) {
+          return { result: "ignored" };
+        }
         if (workType === "notion_page") {
           return await processNotionPageWork({
             connectionId,
@@ -76,9 +88,8 @@ async function processAvailableWork(limit = 20): Promise<number> {
             credential.bundle,
             credential.accessExpiresAt,
           );
-          const connection = await loadConnectionRow(connectionId);
           const calendarId =
-            ((connection?.container as { calendar_id?: string } | undefined)?.calendar_id) ??
+            ((connection.container as { calendar_id?: string } | undefined)?.calendar_id) ??
             null;
           const renewed = await renewGoogleWatch({ connectionId, session, calendarId });
           if (renewed.renewed) {
@@ -129,7 +140,7 @@ Deno.serve(async (req) => {
   if (!maintenanceAuthorized(req)) {
     return json({ ok: false, error: "AUTH_REQUIRED" }, 401);
   }
-  let body: { action?: string; purpose?: string } = {};
+  let body: { action?: string; purpose?: string; connection_id?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -151,6 +162,33 @@ Deno.serve(async (req) => {
         setup_nonce: armed.setupNonce,
         expires_at: armed.expiresAt,
       });
+    }
+    if (body.action === "activate_inbound" || body.action === "deactivate_inbound") {
+      const connectionId = body.connection_id ?? "";
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          .test(connectionId)
+      ) {
+        return json({ ok: false, error: "VALIDATION" }, 400);
+      }
+      if (body.action === "activate_inbound") {
+        const result = await activateInbound(connectionId);
+        return json({ ok: result.ok === true, ...result });
+      }
+      const result = await deactivateInbound(connectionId);
+      const connection = await loadConnectionRow(connectionId);
+      if (connection?.provider === "google") {
+        const credential = await readCredential(connectionId);
+        const session = credential
+          ? new GoogleSession(
+            connectionId,
+            credential.bundle,
+            credential.accessExpiresAt,
+          )
+          : null;
+        await stopGoogleWatches(connectionId, session);
+      }
+      return json({ ok: result.ok === true, ...result });
     }
     const maintenance = await runMaintenance();
     const processed = await processAvailableWork();

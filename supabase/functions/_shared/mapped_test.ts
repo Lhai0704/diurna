@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   nextInboundStatus,
   patchMatchesRow,
+  shouldEnqueueBootstrap,
   shouldEnqueueRepair,
   shouldRenewWatch,
 } from "./mapped.ts";
@@ -100,8 +101,31 @@ Deno.test("repair cadence is 15 minutes and only when active/degraded", () => {
   );
 });
 
+Deno.test("maintenance never auto-bootstraps disabled connections", () => {
+  assertEquals(
+    shouldEnqueueBootstrap({ inboundStatus: "disabled", hasInflightBootstrap: false }),
+    false,
+  );
+  assertEquals(
+    shouldEnqueueBootstrap({ inboundStatus: "bootstrapping", hasInflightBootstrap: false }),
+    true,
+  );
+  assertEquals(
+    shouldEnqueueBootstrap({ inboundStatus: "bootstrapping", hasInflightBootstrap: true }),
+    false,
+  );
+  assertEquals(
+    shouldEnqueueBootstrap({ inboundStatus: "active", hasInflightBootstrap: false }),
+    false,
+  );
+});
+
 Deno.test("inbound status transitions", () => {
-  assertEquals(nextInboundStatus("disabled", "bootstrap_start"), "bootstrapping");
+  assertEquals(nextInboundStatus("disabled", "bootstrap_start"), "disabled");
+  assertEquals(nextInboundStatus("disabled", "bootstrap_ok_watch_ok"), "disabled");
+  assertEquals(nextInboundStatus("disabled", "watch_ok"), "disabled");
+  assertEquals(nextInboundStatus("error", "bootstrap_start"), "error");
+  assertEquals(nextInboundStatus("bootstrapping", "bootstrap_start"), "bootstrapping");
   assertEquals(nextInboundStatus("bootstrapping", "bootstrap_ok_watch_ok"), "active");
   assertEquals(nextInboundStatus("bootstrapping", "bootstrap_ok_watch_failed"), "degraded");
   assertEquals(nextInboundStatus("active", "watch_failed"), "degraded");

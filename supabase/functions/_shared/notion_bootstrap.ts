@@ -142,11 +142,18 @@ export async function bootstrapNotionConnection(args: {
   if (!connection || connection.status !== "connected") {
     return { result: "ignored", ready: 0, conflicts: 0 };
   }
+  if (String(connection.inbound_status ?? "disabled") !== "bootstrapping") {
+    return { result: "ignored", ready: 0, conflicts: 0 };
+  }
+  await setInboundStatus(args.connectionId, "bootstrap_start");
   const latest = await loadConnectionRow(args.connectionId);
-    if (!latest || latest.status !== "connected") {
-      return { result: "ignored", ready: 0, conflicts: 0 };
-    }
-    await setInboundStatus(args.connectionId, "bootstrap_start");
+  if (
+    !latest ||
+    latest.status !== "connected" ||
+    String(latest.inbound_status) !== "bootstrapping"
+  ) {
+    return { result: "ignored", ready: 0, conflicts: 0 };
+  }
     const credential = await readCredential(args.connectionId);
     if (!credential) {
       await setInboundStatus(args.connectionId, "reauth", { error: "REAUTH_REQUIRED" });

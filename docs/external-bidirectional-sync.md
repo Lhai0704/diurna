@@ -45,8 +45,8 @@ disconnect → disabled
 
 | State | Meaning |
 |---|---|
-| `disabled` | Connected but inbound not started, or disconnected |
-| `bootstrapping` | Baseline compare in progress |
+| `disabled` | Authoritative inbound OFF. Webhooks ignored; no work, `outbound_hold`, or `inbound_delta_hold`; cron/maintenance never bootstraps or repairs. Outbound export continues. Promote only with explicit `activate_inbound`. Also the post-disconnect state. |
+| `bootstrapping` | Baseline compare in progress (after explicit activation, or stuck-work recovery of an already-bootstrapping connection) |
 | `active` | Baseline done and (for Google) watch usable |
 | `degraded` | Watch/push failed or transient outage; **cron repair still works**; connection is not unusable |
 | `error` | `REAUTH_REQUIRED` or calendar gone |
@@ -91,6 +91,8 @@ Google `degraded` text says push is down and **timed repair still syncs linked e
 5. `supabase/tests/integrations_inbound.sql`
 6. `supabase/tests/integrations_google_inbound.sql`
 7. `supabase/tests/integrations_phase4.sql`
+8. `supabase/tests/integrations_review_fixes.sql`
+9. `supabase/tests/integrations_inbound_activation.sql`
 
 Deno: `npx --yes deno@2.1.4 test supabase/functions/_shared --allow-env`.
 
@@ -107,6 +109,7 @@ The inbound migrations have **not** been applied to the hosted project, so in-re
 - `20260909140000_inbound_maintenance.sql`
 - `20260909150000_inbound_review_fixes.sql`
 - `20260909160000_inbound_work_heartbeat.sql`
+- `20260909170000_inbound_activation_gate.sql`
 
 **Once the first hosted deployment of these files begins, treat every applied migration as immutable.**
 
@@ -126,12 +129,34 @@ final local verification
 → set maintenance secret
 → create/verify Notion webhook
 → configure cron
-→ bootstrap disposable/test connection
-→ verify Google watch
-→ verify Notion inbound
-→ inspect conflicts / no mass revision bump
-→ only then production bootstrap
+→ verify all existing production connections remain disabled/untouched
+→ explicitly activate ONE disposable/test connection
+→ verify bootstrap/watch/inbound/conflicts
+→ explicitly activate selected production connections gradually
 ```
+
+Cron and webhooks must **not** bootstrap `inbound_status=disabled` connections. Activate one connection at a time:
+
+```text
+POST /functions/v1/integrations-inbound-worker
+Header: x-diurna-maintenance: <INTEGRATIONS_MAINTENANCE_SECRET>
+Body: {"action":"activate_inbound","connection_id":"<uuid>"}
+```
+
+Disable inbound without disconnecting outbound export:
+
+```text
+Body: {"action":"deactivate_inbound","connection_id":"<uuid>"}
+```
+
+SQL equivalent (service role / postgres only):
+
+```sql
+select integrations.activate_inbound('<uuid>');
+select integrations.deactivate_inbound('<uuid>');
+```
+
+SQL `deactivate_inbound` returns the connection to `disabled`, clears holds, and marks pending/processing inbound work done. It does not call Google `channels.stop`. Use the worker `deactivate_inbound` action when the connection may have watches.
 
 ### 1. Final local verification
 
@@ -148,6 +173,7 @@ Apply **in this order**, additive, on a backup-verified project:
 3. `20260909140000_inbound_maintenance.sql`
 4. `20260909150000_inbound_review_fixes.sql`
 5. `20260909160000_inbound_work_heartbeat.sql`
+6. `20260909170000_inbound_activation_gate.sql`
 
 `20260908120000_add_external_integrations.sql` is already on the live project.
 
@@ -234,7 +260,7 @@ Header: x-diurna-maintenance: <INTEGRATIONS_MAINTENANCE_SECRET>
 Body: {}
 ```
 
-The worker runs maintenance (purge 48h events, bootstrap enqueue, Google renew, 15-minute repair) then claims work. Repair is a safety net, not the primary sync path. Do not run two independent Calendar sync-token streams.
+The worker runs maintenance (purge 48h events, re-enqueue **already-bootstrapping** connections that lost bootstrap work, Google renew for `active`/`degraded`, 15-minute repair for `active`/`degraded`) then claims work. Enabling cron does **not** bootstrap `inbound_status=disabled` connections. Repair is a safety net, not the primary sync path. Do not run two independent Calendar sync-token streams.
 
 **Rollback:** disable/delete the scheduled job. Pending `inbound_work` remains until the worker runs again.
 
@@ -244,11 +270,12 @@ Use a disposable Notion workspace and Google account, not production user data.
 
 1. Connect from **外部连接** (existing OAuth).
 2. Run **立即同步** so export links exist.
-3. Leave inbound to the worker (`inbound_status=disabled` → enqueue `bootstrap_*`).
-4. Confirm **外部连接** shows 正在建立入站基线 then 入站正常 (or 入站降级 if Google watch failed but repair works).
-5. Confirm equal linked rows did **not** bump `revision` or `diurna_sync_signals.generation`.
+3. Confirm every existing production connection is still `inbound_status=disabled` with no inbound work.
+4. Explicitly activate **only** this disposable connection (`activate_inbound` above). Cron must not have bootstrapped it.
+5. Confirm **外部连接** shows 正在建立入站基线 then 入站正常 (or 入站降级 if Google watch failed but repair works).
+6. Confirm equal linked rows did **not** bump `revision` or `diurna_sync_signals.generation`.
 
-**Rollback:** **断开** on that test connection. Disconnect stops watches, ignores inbound, deletes links/credentials. Remote Notion pages and Google calendars stay.
+**Rollback:** `deactivate_inbound` on that test connection (keeps outbound export) or **断开** (also drops export). Disconnect stops watches, ignores inbound, deletes links/credentials. Remote Notion pages and Google calendars stay.
 
 ### 8. Verify Google watch
 
@@ -272,10 +299,10 @@ Edit a linked paragraph-only page. Webhook → `notion_page` work → apply or `
 
 ### 11. Production bootstrap (last)
 
-Only after the disposable path is green. Existing production connections stay `inbound_status=disabled` until the worker enqueues bootstrap. Expect some `bootstrap_remote_drift` / `unsupported_content` / timed-event conflicts. That is success, not a reason to disable the whole connection.
+Only after the disposable path is green. Existing production connections stay `inbound_status=disabled` until each is **explicitly** activated. Do not activate all production connections in one step. Expect some `bootstrap_remote_drift` / `unsupported_content` / timed-event conflicts. That is success, not a reason to disable the whole connection.
 
-**Rollback:** set the production connection `inbound_status=disabled` (or **断开**, which also drops export). Stopping cron prevents new apply. Do not rewrite Diurna rows to “undo” inbound; protocol v2 revisions must stay.
+**Rollback:** `deactivate_inbound` on that production connection (SQL or worker action; the worker action also stops Google watches) or **断开**, which also drops export. Stopping cron prevents new apply. Do not rewrite Diurna rows to “undo” inbound; protocol v2 revisions must stay.
 
 ## After hosted apply
 
-New inbound schema changes are a **new** additive migration. Never edit `20260909120000`, `20260909130000`, `20260909140000`, `20260909150000` or `20260909160000` once they have been applied hosted.
+New inbound schema changes are a **new** additive migration. Never edit `20260909120000`–`20260909170000` once they have been applied hosted.

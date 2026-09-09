@@ -1239,6 +1239,9 @@ begin
   if not found or conn.status is distinct from 'connected' then
     return jsonb_build_object('result', 'ignored', 'reason', 'not_connected');
   end if;
+  if conn.inbound_status not in ('active', 'bootstrapping', 'degraded') then
+    return jsonb_build_object('result', 'ignored', 'reason', 'inbound_disabled');
+  end if;
   perform pg_advisory_xact_lock(hashtextextended(conn.user_id::text, 0));
   select * into link
     from public.external_sync_links
@@ -1577,6 +1580,9 @@ begin
   if not found or conn.status is distinct from 'connected' then
     return jsonb_build_object('result', 'ignored', 'reason', 'not_connected');
   end if;
+  if conn.inbound_status not in ('active', 'bootstrapping', 'degraded') then
+    return jsonb_build_object('result', 'ignored', 'reason', 'inbound_disabled');
+  end if;
   perform pg_advisory_xact_lock(hashtextextended(conn.user_id::text, 0));
   select * into link
     from public.external_sync_links
@@ -1789,18 +1795,23 @@ security definer
 set search_path = pg_catalog, public, integrations
 as $$
 declare work jsonb;
-declare conn_status text;
+declare conn public.integration_connections%rowtype;
 begin
   if p_provider is null or p_event_key is null or p_event_key = ''
      or p_connection_id is null or p_work_type is null or p_dedup_key is null then
     raise exception 'VALIDATION';
   end if;
-  select status into conn_status
+  select * into conn
     from public.integration_connections
    where id = p_connection_id
    for update;
-  if not found or conn_status is distinct from 'connected' then
+  if not found or conn.status is distinct from 'connected' then
     return jsonb_build_object('accepted', false, 'ignored', true, 'reason', 'disconnected');
+  end if;
+  if conn.inbound_status is distinct from 'active'
+     and conn.inbound_status is distinct from 'degraded'
+     and conn.inbound_status is distinct from 'bootstrapping' then
+    return jsonb_build_object('accepted', false, 'ignored', true, 'reason', 'inbound_disabled');
   end if;
   insert into integrations.inbound_events (provider, event_key, connection_id, result)
   values (p_provider, p_event_key, p_connection_id, 'accepted')
@@ -1811,17 +1822,19 @@ begin
   work := integrations.enqueue_inbound_work(
     p_connection_id, p_provider, p_work_type, p_dedup_key, coalesce(p_payload, '{}'::jsonb)
   );
-  if p_work_type = 'notion_page' then
-    update public.external_sync_links
-       set outbound_hold = true,
-           last_remote_event_at = now()
-     where connection_id = p_connection_id
-       and external_id = p_dedup_key;
-  elsif p_work_type = 'google_incremental' then
-    update public.integration_connections
-       set inbound_delta_hold = true,
-           updated_at = now()
-     where id = p_connection_id;
+  if conn.inbound_status in ('active', 'degraded') then
+    if p_work_type = 'notion_page' then
+      update public.external_sync_links
+         set outbound_hold = true,
+             last_remote_event_at = now()
+       where connection_id = p_connection_id
+         and external_id = p_dedup_key;
+    elsif p_work_type = 'google_incremental' then
+      update public.integration_connections
+         set inbound_delta_hold = true,
+             updated_at = now()
+       where id = p_connection_id;
+    end if;
   end if;
   return jsonb_build_object('accepted', true, 'duplicate', false) || work;
 end;
@@ -1927,15 +1940,137 @@ begin
 end;
 $$;
 
+create or replace function integrations.due_inbound_bootstraps()
+returns table(id uuid, provider text)
+language sql
+security definer
+set search_path = pg_catalog, public, integrations
+as $$
+  select c.id, c.provider
+    from public.integration_connections c
+   where c.status = 'connected'
+     and c.inbound_status = 'bootstrapping'
+     and not exists (
+       select 1 from integrations.inbound_work w
+        where w.connection_id = c.id
+          and w.work_type in ('bootstrap_google', 'bootstrap_notion')
+          and w.status in ('pending', 'processing')
+     );
+$$;
+
+create or replace function integrations.activate_inbound(p_connection_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, integrations
+as $$
+declare conn public.integration_connections%rowtype;
+declare work jsonb;
+declare work_type text;
+begin
+  if p_connection_id is null then
+    raise exception 'VALIDATION';
+  end if;
+  select * into conn
+    from public.integration_connections
+   where id = p_connection_id
+   for update;
+  if not found or conn.status is distinct from 'connected' then
+    return jsonb_build_object('ok', false, 'result', 'ignored', 'reason', 'not_connected');
+  end if;
+  if conn.inbound_status = 'error' then
+    return jsonb_build_object(
+      'ok', false, 'result', 'error', 'reason', coalesce(conn.inbound_error, 'error')
+    );
+  end if;
+  if conn.inbound_status in ('active', 'degraded') then
+    return jsonb_build_object(
+      'ok', true, 'result', 'already_active', 'inbound_status', conn.inbound_status
+    );
+  end if;
+  if conn.inbound_status = 'disabled' then
+    update public.integration_connections
+       set inbound_status = 'bootstrapping',
+           inbound_error = null,
+           updated_at = now()
+     where id = p_connection_id;
+  end if;
+  work_type := case conn.provider
+    when 'google' then 'bootstrap_google'
+    else 'bootstrap_notion'
+  end;
+  work := integrations.enqueue_inbound_work(
+    p_connection_id, conn.provider, work_type, p_connection_id::text, '{}'::jsonb
+  );
+  return jsonb_build_object(
+    'ok', true,
+    'result', 'ok',
+    'inbound_status', 'bootstrapping'
+  ) || work;
+end;
+$$;
+
+create or replace function integrations.deactivate_inbound(p_connection_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, integrations
+as $$
+declare conn public.integration_connections%rowtype;
+declare cancelled integer := 0;
+begin
+  if p_connection_id is null then
+    raise exception 'VALIDATION';
+  end if;
+  select * into conn
+    from public.integration_connections
+   where id = p_connection_id
+   for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'result', 'ignored', 'reason', 'missing');
+  end if;
+  update public.integration_connections
+     set inbound_status = 'disabled',
+         inbound_delta_hold = false,
+         inbound_repair_state = '{}'::jsonb,
+         inbound_error = null,
+         updated_at = now()
+   where id = p_connection_id;
+  update public.external_sync_links
+     set outbound_hold = false
+   where connection_id = p_connection_id;
+  update integrations.inbound_work
+     set status = 'done',
+         locked_until = null,
+         last_error = 'inbound_disabled',
+         updated_at = now()
+   where connection_id = p_connection_id
+     and status in ('pending', 'processing');
+  get diagnostics cancelled = row_count;
+  return jsonb_build_object(
+    'ok', true,
+    'result', 'ok',
+    'inbound_status', 'disabled',
+    'cancelled_work', cancelled
+  );
+end;
+$$;
+
 revoke all on function integrations.defer_inbound_work(uuid, interval) from public, anon, authenticated;
 revoke all on function integrations.purge_inbound_events(interval) from public, anon, authenticated;
 revoke all on function integrations.consume_handshake_arm(text, boolean) from public, anon, authenticated;
 revoke all on function integrations.heartbeat_inbound_work(uuid, interval) from public, anon, authenticated;
+revoke all on function integrations.due_inbound_bootstraps() from public, anon, authenticated;
+revoke all on function integrations.activate_inbound(uuid) from public, anon, authenticated;
+revoke all on function integrations.deactivate_inbound(uuid) from public, anon, authenticated;
 grant execute on function integrations.claim_inbound_work_of(text[]) to postgres, service_role;
 grant execute on function integrations.accept_inbound_event(text, text, uuid, text, text, jsonb) to postgres, service_role;
 grant execute on function integrations.defer_inbound_work(uuid, interval) to postgres, service_role;
 grant execute on function integrations.purge_inbound_events(interval) to postgres, service_role;
 grant execute on function integrations.consume_handshake_arm(text, boolean) to postgres, service_role;
 grant execute on function integrations.heartbeat_inbound_work(uuid, interval) to postgres, service_role;
+grant execute on function integrations.due_inbound_bootstraps() to postgres, service_role;
+grant execute on function integrations.activate_inbound(uuid) to postgres, service_role;
+grant execute on function integrations.deactivate_inbound(uuid) to postgres, service_role;
 
 commit;

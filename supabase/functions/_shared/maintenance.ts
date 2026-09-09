@@ -28,21 +28,8 @@ export async function purgeOldInboundEvents(): Promise<number> {
 
 export async function enqueueDueBootstraps(): Promise<number> {
   const rows = await db()`
-    select c.id::text as id, c.provider
-      from public.integration_connections c
-     where c.status = 'connected'
-       and (
-         c.inbound_status = 'disabled'
-         or (
-           c.inbound_status = 'bootstrapping'
-           and not exists (
-             select 1 from integrations.inbound_work w
-              where w.connection_id = c.id
-                and w.work_type in ('bootstrap_google', 'bootstrap_notion')
-                and w.status in ('pending', 'processing')
-           )
-         )
-       )
+    select id::text as id, provider
+      from integrations.due_inbound_bootstraps()
   `;
   let n = 0;
   for (const row of rows) {

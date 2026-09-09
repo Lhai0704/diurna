@@ -21,6 +21,7 @@ async function lookupConnectionIds(args: {
        where l.provider = 'notion'
          and l.external_id = ${args.pageId}
          and c.status = 'connected'
+         and c.inbound_status in ('active', 'degraded', 'bootstrapping')
     `;
     for (const row of linked) {
       ids.add(String(row.id));
@@ -32,6 +33,7 @@ async function lookupConnectionIds(args: {
         from public.integration_connections
        where provider = 'notion'
          and status = 'connected'
+         and inbound_status in ('active', 'degraded', 'bootstrapping')
          and provider_account_id = ${args.workspaceId}
     `;
     for (const row of rows) {

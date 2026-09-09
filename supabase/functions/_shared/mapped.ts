@@ -51,6 +51,13 @@ export function shouldRenewWatch(args: {
   return expires < args.now.getTime() + RENEW_SAFETY_MS;
 }
 
+export function shouldEnqueueBootstrap(args: {
+  inboundStatus: string;
+  hasInflightBootstrap: boolean;
+}): boolean {
+  return args.inboundStatus === "bootstrapping" && !args.hasInflightBootstrap;
+}
+
 export function shouldEnqueueRepair(args: {
   now: Date;
   lastInboundAt: string | null | undefined;
@@ -106,6 +113,9 @@ export function nextInboundStatus(
     return "error";
   }
   if (event === "bootstrap_start") {
+    if (current === "disabled") {
+      return current;
+    }
     return "bootstrapping";
   }
   if (event === "bootstrap_ok_watch_ok" || event === "watch_ok" || event === "transient_ok") {

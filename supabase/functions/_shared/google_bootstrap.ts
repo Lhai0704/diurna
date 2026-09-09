@@ -102,11 +102,18 @@ export async function bootstrapGoogleConnection(args: {
   if (!connection || connection.status !== "connected") {
     return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
   }
+  if (String(connection.inbound_status ?? "disabled") !== "bootstrapping") {
+    return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
+  }
+  await setInboundStatus(args.connectionId, "bootstrap_start");
   const latest = await loadConnectionRow(args.connectionId);
-    if (!latest || latest.status !== "connected") {
-      return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
-    }
-    await setInboundStatus(args.connectionId, "bootstrap_start");
+  if (
+    !latest ||
+    latest.status !== "connected" ||
+    String(latest.inbound_status) !== "bootstrapping"
+  ) {
+    return { result: "ignored", ready: 0, conflicts: 0, watch: "skipped" };
+  }
     const calendarId =
       ((latest.container as { calendar_id?: string } | undefined)?.calendar_id) ?? null;
     if (!calendarId) {
@@ -205,6 +212,14 @@ export async function bootstrapGoogleConnection(args: {
       }
     }
     // nextSyncToken is stored only after the compare pass finishes.
+    const still = await loadConnectionRow(args.connectionId);
+    if (
+      !still ||
+      still.status !== "connected" ||
+      String(still.inbound_status) !== "bootstrapping"
+    ) {
+      return { result: "ignored", ready, conflicts, watch: "skipped" };
+    }
     let watch = "skipped";
     if (args.createWatch !== false) {
       try {

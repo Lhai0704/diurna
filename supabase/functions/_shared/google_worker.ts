@@ -192,7 +192,10 @@ export async function processGoogleIncrementalWork(args: {
       return { result: "ignored", applied: 0, fullResync: false };
     }
     const inboundStatus = String(connection.inbound_status ?? "disabled");
-    if (inboundStatus === "disabled" || inboundStatus === "bootstrapping") {
+    if (inboundStatus === "disabled") {
+      return { result: "ignored", applied: 0, fullResync: false };
+    }
+    if (inboundStatus === "bootstrapping") {
       return { result: "deferred", applied: 0, fullResync: false };
     }
     if (inboundStatus === "error") {
@@ -250,6 +253,15 @@ export async function processGoogleIncrementalWork(args: {
 export async function processGoogleCalendarGone(
   connectionId: string,
 ): Promise<{ result: string }> {
+  const connection = await loadConnection(connectionId);
+  const inboundStatus = String(connection?.inbound_status ?? "disabled");
+  if (
+    !connection ||
+    connection.status !== "connected" ||
+    inboundStatus === "disabled"
+  ) {
+    return { result: "ignored" };
+  }
   await db()`
     update public.integration_connections
        set inbound_status = 'error',
@@ -257,6 +269,7 @@ export async function processGoogleCalendarGone(
            last_inbound_result = 'error',
            updated_at = now()
      where id = ${connectionId}::uuid
+       and inbound_status is distinct from 'disabled'
   `;
   await db()`
     update integrations.provider_watches

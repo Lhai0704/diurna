@@ -32,8 +32,9 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 3. `20260909140000_inbound_maintenance.sql`
 4. `20260909150000_inbound_review_fixes.sql`
 5. `20260909160000_inbound_work_heartbeat.sql`
+6. `20260909170000_inbound_activation_gate.sql`
 
-These three are **not** on the hosted project yet. Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. After the first hosted apply, those migration files are immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
+These inbound migrations are **not** on the hosted project yet. Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After the first hosted apply, those migration files are immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 
 Drift v4→v5 adds queue generation/group fields and sync metadata. Pending v4 operations with unknown baseline use expected revision -1 and become retained conflicts rather than silently taking the latest remote version. Legacy v1/v2 tasks are mapped to Inbox without deleting the original `local_tasks` table. Old calendar date-range rows and queue payloads are retained in `legacy_calendar_events` / `legacy_pending_sync_operations`; extra old fields are also included in the migrated note. Unsupported retired tasks operations are retained as legacy conflicts.
 
@@ -41,7 +42,7 @@ Keep metadata/tombstones/receipts during rollback. Prefer a corrected client rel
 
 ## Verification
 
-`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`) on the same isolated database.
+`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`, `integrations_review_fixes.sql`, `integrations_inbound_activation.sql`) on the same isolated database.
 
 Use `scripts/test-sync.ps1` only with the explicitly named loopback test database. The repository's local test cluster, when used, lives under ignored `.diurna/test-postgres`; it is not the user's production database.
 

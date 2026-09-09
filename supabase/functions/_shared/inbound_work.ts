@@ -150,6 +150,24 @@ export async function heartbeatInboundWork(
   return rows[0].result as Record<string, unknown>;
 }
 
+export async function activateInbound(
+  connectionId: string,
+): Promise<Record<string, unknown>> {
+  const rows = await db()`
+    select integrations.activate_inbound(${connectionId}::uuid) as result
+  `;
+  return rows[0].result as Record<string, unknown>;
+}
+
+export async function deactivateInbound(
+  connectionId: string,
+): Promise<Record<string, unknown>> {
+  const rows = await db()`
+    select integrations.deactivate_inbound(${connectionId}::uuid) as result
+  `;
+  return rows[0].result as Record<string, unknown>;
+}
+
 export function startInboundWorkHeartbeat(
   workId: string,
   args?: {

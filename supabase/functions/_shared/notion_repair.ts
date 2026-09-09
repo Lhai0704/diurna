@@ -99,6 +99,9 @@ export async function repairNotionConnection(args: {
     return { result: "ignored", enqueued: 0 };
   }
   const inboundStatus = String(connection.inbound_status ?? "");
+  if (inboundStatus === "disabled") {
+    return { result: "ignored", enqueued: 0 };
+  }
   if (inboundStatus !== "active" && inboundStatus !== "degraded") {
     return { result: "deferred", enqueued: 0 };
   }

@@ -134,7 +134,10 @@ export async function processNotionPageWork(args: {
     return { result: "ignored", reason: "disconnected" };
   }
   const inboundStatus = String(connection.inbound_status ?? "disabled");
-  if (inboundStatus === "disabled" || inboundStatus === "bootstrapping") {
+  if (inboundStatus === "disabled") {
+    return { result: "ignored", reason: "inbound_disabled" };
+  }
+  if (inboundStatus === "bootstrapping") {
     return { result: "deferred" };
   }
   if (inboundStatus === "error") {
