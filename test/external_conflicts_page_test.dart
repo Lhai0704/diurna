@@ -196,4 +196,28 @@ void main() {
     expect(find.textContaining('本地已变化，请刷新后重新选择'), findsOneWidget);
     expect(find.text('使用 Diurna'), findsOneWidget);
   });
+
+  testWidgets('verify failure shows a safe retry label, not FunctionException', (
+    tester,
+  ) async {
+    final repo = _FakeRepo([_diaryConflict()])
+      ..nextResult = const ConflictResolveResult(
+        ok: false,
+        result: 'error',
+        errorCode: 'PROVIDER_VERIFY_FAILED',
+      );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [integrationRepositoryProvider.overrideWithValue(repo)],
+        child: const MaterialApp(home: ExternalConflictsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用 Diurna'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('外部写入尚未通过校验'), findsOneWidget);
+    expect(find.textContaining('FunctionException'), findsNothing);
+    expect(find.textContaining('PROVIDER_VERIFY_FAILED'), findsNothing);
+    expect(find.text('使用 Diurna'), findsOneWidget);
+  });
 }

@@ -223,6 +223,28 @@ Deno.test("post-write mapped mismatch leaves the write unverified", async () => 
   await assertRejects(() => replace(mock.fetchImpl), Error, "PROVIDER_VERIFY_FAILED");
 });
 
+Deno.test("Keep Diurna verifies CRLF Diary content against LF Notion paragraphs", async () => {
+  const crlfRow = {
+    id: "22000000-0000-0000-0000-000000000191",
+    title: "Local title",
+    content: "alpha line\r\nsecond paragraph here!!!\r\nthird line ok.\r\n",
+    entry_date: "2026-07-31",
+    mood: "ok",
+    revision: 1,
+  };
+  const mock = notionMock({
+    initialBlocks: [paragraph("old-0", "legacy content as title shape")],
+  });
+  const written = await replace(mock.fetchImpl, crlfRow);
+  assertEquals(written.updatedAt, "2026-09-09T10:00:05.000Z");
+  const children = mock.getAppendBody() as Array<{
+    paragraph?: { rich_text?: Array<{ text?: { content?: string } }> };
+  }>;
+  const texts = children.map((child) => child.paragraph?.rich_text?.[0]?.text?.content ?? "");
+  assertEquals(texts, ["alpha line", "second paragraph here!!!", "third line ok.", ""]);
+  assertEquals(texts.some((text) => text.includes("\r")), false);
+});
+
 Deno.test("successful Notion replacement uses final last_edited_time", async () => {
   const mock = notionMock({
     initialBlocks: [paragraph("old-0", "trailing")],

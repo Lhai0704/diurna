@@ -174,14 +174,22 @@ class IntegrationRepository {
     required String choice,
     required int expectedLocalRevision,
   }) async {
-    final result = await _invoke({
-      'action': 'resolve_conflict',
-      'conflict_id': conflictId,
-      'choice': choice,
-      'expected_local_revision': expectedLocalRevision,
-      'expected_current_local_revision': expectedLocalRevision,
-    });
-    return ConflictResolveResult.fromMap(result);
+    try {
+      final result = await _invoke({
+        'action': 'resolve_conflict',
+        'conflict_id': conflictId,
+        'choice': choice,
+        'expected_local_revision': expectedLocalRevision,
+        'expected_current_local_revision': expectedLocalRevision,
+      });
+      return ConflictResolveResult.fromMap(result);
+    } on FunctionException catch (error) {
+      return ConflictResolveResult(
+        ok: false,
+        result: 'error',
+        errorCode: conflictResolveErrorCodeFromDetails(error.details),
+      );
+    }
   }
 
   Future<Map<String, dynamic>> _invoke(Map<String, dynamic> body) async {

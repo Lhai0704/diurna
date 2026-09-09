@@ -103,8 +103,66 @@ void main() {
     );
     expect(conflictRecurrenceBlockedLabel(), contains('无法自动处理'));
     expect(conflictResolveErrorLabel('PROVIDER_WRITE_FAILED'), contains('仍保留'));
-    expect(conflictResolveErrorLabel('PROVIDER_VERIFY_FAILED'), contains('重试'));
+    expect(conflictResolveErrorLabel('PROVIDER_VERIFY_FAILED'), contains('刷新后重试'));
     expect(conflictResolveErrorLabel('PROVIDER_VERSION_CONFLICT'), contains('刷新'));
+  });
+
+  test('conflict resolve extracts error.code from FunctionException JSON', () {
+    expect(
+      conflictResolveErrorCodeFromDetails({
+        'ok': false,
+        'error': {'code': 'PROVIDER_VERIFY_FAILED'},
+        'result': 'error',
+      }),
+      'PROVIDER_VERIFY_FAILED',
+    );
+    expect(
+      conflictResolveErrorCodeFromDetails(
+        '{"ok":false,"error":{"code":"PROVIDER_WRITE_FAILED"}}',
+      ),
+      'PROVIDER_WRITE_FAILED',
+    );
+    expect(
+      conflictResolveErrorCodeFromDetails({
+        'ok': false,
+        'error': {'code': 'PROVIDER_VERSION_CONFLICT'},
+      }),
+      'PROVIDER_VERSION_CONFLICT',
+    );
+    expect(
+      conflictResolveErrorCodeFromDetails({
+        'ok': false,
+        'error': {'code': 'UNSUPPORTED_RECURRENCE'},
+      }),
+      'UNSUPPORTED_RECURRENCE',
+    );
+    expect(
+      ConflictResolveResult.fromMap({
+        'ok': false,
+        'error': {'code': 'PROVIDER_VERIFY_FAILED'},
+        'result': 'error',
+      }).errorCode,
+      'PROVIDER_VERIFY_FAILED',
+    );
+    expect(
+      conflictResolveErrorLabel(
+        conflictResolveErrorCodeFromDetails({
+          'ok': false,
+          'error': {'code': 'PROVIDER_VERIFY_FAILED'},
+        }),
+      ),
+      isNot(contains('FunctionException')),
+    );
+    expect(conflictResolveErrorCodeFromDetails('not json'), isNull);
+    expect(conflictResolveErrorCodeFromDetails({'error': 'PROVIDER_VERIFY_FAILED'}), isNull);
+    expect(
+      conflictResolveErrorCodeFromDetails({
+        'error': {'code': 'Bearer abc'},
+      }),
+      isNull,
+    );
+    expect(conflictResolveErrorLabel(null), '处理失败，请稍后重试');
+    expect(conflictResolveErrorLabel('GARBAGE_CODE'), '处理失败，请稍后重试');
   });
 
   test('safeInboundCode hides tokens and ciphertext', () {

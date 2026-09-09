@@ -1,7 +1,15 @@
+import {
+  MAX_NOTION_PARAGRAPHS,
+  MAX_NOTION_TEXT,
+  notionParagraphsFromContent,
+  notionParagraphSequencesEqual,
+  normalizeNotionLineEndings,
+} from "./notion_text.ts";
+
 const INBOX_TYPES = new Set(["idea", "action", "research", "resource"]);
 const INBOX_COLUMNS = new Set(["focus", "pending"]);
-const MAX_PARAGRAPHS = 100;
-const MAX_TEXT = 2000;
+const MAX_PARAGRAPHS = MAX_NOTION_PARAGRAPHS;
+const MAX_TEXT = MAX_NOTION_TEXT;
 
 export type NotionRichText = {
   type?: string;
@@ -121,16 +129,15 @@ export function notionBodyIsLossless(blocks: NotionBlock[]): boolean {
 
 export function flattenLosslessParagraphs(blocks: NotionBlock[]): string {
   return blocks.map((block) => {
-    const text = flattenRichText(block.paragraph?.rich_text ?? []);
+    const text = normalizeNotionLineEndings(
+      flattenRichText(block.paragraph?.rich_text ?? []),
+    );
     return text.slice(0, MAX_TEXT);
   }).join("\n\n");
 }
 
 export function paragraphsFromContent(content: string): string[] {
-  if (!content) {
-    return [];
-  }
-  return content.split(/\n+/).slice(0, MAX_PARAGRAPHS);
+  return notionParagraphsFromContent(content);
 }
 
 export function entityTypeForModule(
@@ -206,12 +213,9 @@ export function importNotionPage(args: {
       patch.title = title.slice(0, MAX_TEXT);
     }
     const imported = flattenLosslessParagraphs(args.blocks);
-    const currentParagraphs = paragraphsFromContent(args.currentContent ?? "");
-    const importedParagraphs = paragraphsFromContent(imported);
-    if (
-      currentParagraphs.length === importedParagraphs.length &&
-      currentParagraphs.every((line, i) => line === importedParagraphs[i])
-    ) {
+    const currentParagraphs = notionParagraphsFromContent(args.currentContent ?? "");
+    const importedParagraphs = notionParagraphsFromContent(imported);
+    if (notionParagraphSequencesEqual(currentParagraphs, importedParagraphs)) {
       if (args.currentContent != null) {
         patch.content = args.currentContent;
       } else {
