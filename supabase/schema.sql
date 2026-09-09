@@ -1232,6 +1232,8 @@ as $$
 declare
   conn public.integration_connections%rowtype;
   link public.external_sync_links%rowtype;
+  open_conflict public.external_sync_conflicts%rowtype;
+  has_open_conflict boolean;
   current_row jsonb;
   current_revision bigint;
 begin
@@ -1252,11 +1254,30 @@ begin
   if not found or link.external_id is distinct from p_external_id then
     return jsonb_build_object('result', 'ignored', 'reason', 'no_link');
   end if;
+  select * into open_conflict
+    from public.external_sync_conflicts
+   where connection_id = p_connection_id
+     and entity_type = p_entity_type
+     and entity_id = p_entity_id
+     and status = 'open'
+   for update;
+  has_open_conflict := found;
   execute format(
     'select to_jsonb(r) from public.%I r where r.id = $1 and r.user_id = $2 for update',
     p_entity_type
   ) into current_row using p_entity_id, conn.user_id;
   current_revision := coalesce((current_row->>'revision')::bigint, link.last_synced_revision);
+
+  if has_open_conflict and open_conflict.reason is distinct from 'bootstrap_remote_drift' then
+    update public.external_sync_links
+       set inbound_state = 'conflict',
+           outbound_hold = true,
+           external_etag = coalesce(p_provider_etag, external_etag),
+           external_updated_at = coalesce(p_provider_updated_at, external_updated_at),
+           last_remote_event_at = now()
+     where id = link.id;
+    return jsonb_build_object('result', 'conflict', 'reason', open_conflict.reason);
+  end if;
 
   if p_drift or current_revision > link.last_synced_revision then
     perform integrations._open_conflict(
@@ -1276,8 +1297,18 @@ begin
     return jsonb_build_object('result', 'conflict', 'reason', coalesce(p_reason, 'bootstrap_remote_drift'));
   end if;
 
+  update public.external_sync_conflicts
+     set status = 'dismissed',
+         resolved_at = clock_timestamp()
+   where connection_id = p_connection_id
+     and entity_type = p_entity_type
+     and entity_id = p_entity_id
+     and status = 'open'
+     and reason = 'bootstrap_remote_drift';
+
   update public.external_sync_links
      set inbound_state = 'ready',
+         outbound_hold = false,
          external_etag = p_provider_etag,
          external_updated_at = p_provider_updated_at,
          last_remote_event_at = now()
