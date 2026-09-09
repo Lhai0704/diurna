@@ -1,5 +1,13 @@
 # Implementation verification
 
+**Current hosted status (2026-09-10).** Live project `diurna` has one-way export, inbound webhooks/worker/cron, and explicit conflict resolution. Applied inbound/conflict migrations are `20260909120000`–`20260909190000` (immutable). Notion import/export share CRLF-safe paragraph semantics (`notion_text.ts`). Flutter maps Functions `error.code` to safe conflict labels. Windows and Web clients track `main`.
+
+## Notion CRLF hotfix and conflict UX — 2026-09-10
+
+PR #4 merged to `main` (`5df7b4cd`). Shared paragraph helper normalizes CRLF / lone CR before import/export compare, so Keep Diurna verify treats LF Notion paragraphs as equal to a local CRLF body and preserves local bytes. Conflict resolve catches `FunctionException` and shows the mapped label, not the raw exception.
+
+Hosted: `integrations` v6 (`verify_jwt=true`) and `integrations-inbound-worker` v4 (`verify_jwt=false`). Webhooks unchanged. No migration. Cloudflare Pages deployed from that merge. A remaining open Diary `bootstrap_remote_drift` conflict is left for a manual **使用 Diurna** click; do not auto-resolve.
+
 ## Settings and visual styles — 2026-09-08
 
 Authenticated clients open **设置** from the diary-panel gear on the four-panel desktop, or from the inbox header in Web style. The page holds theme choice and **外部连接**.
@@ -16,19 +24,19 @@ Still not certified: live visual QA on iOS, and Web theme switching on a phone-s
 
 ## External conflict resolution — 2026-09-09
 
-Working tree only. **No hosted migration or function deploy.** Additive SQL `20260909190000_external_conflict_resolution.sql` plus `integrations` actions `list_conflicts` / `resolve_conflict`. Flutter **外部连接 → 查看冲突** offers 使用 Diurna / 使用外部. Snapshots stay off PostgREST (`external_sync_conflict_summaries` view; table select revoked from `authenticated`).
+Hosted on live `diurna` (migration `20260909190000`, `integrations` actions `list_conflicts` / `resolve_conflict`). Flutter **外部连接 → 查看冲突** offers 使用 Diurna / 使用外部. Snapshots stay off PostgREST (`external_sync_conflict_summaries` view; table select revoked from `authenticated`). See the 2026-09-10 hotfix for CRLF verify and FunctionException mapping.
 
 Keep Diurna pushes the current mapped local row to an existing provider object only after a live re-fetch, a complete provider overwrite (paginated Notion children + post-write mapped verify; Google If-Match + post-write verify), and a transaction that holds the selected snapshot until finish. Recurring Google events are not resolvable by either side. Use External applies a live provider patch through private SQL and advances revision once when data changes. An expected revision that does not match the **current** row returns `STALE_CONFLICT`; after refresh the user can choose again. Unsupported Notion/Google shapes cannot be imported. Remote-deleted links are never hard-deleted in Diurna.
 
 ## External inbound (Phases 1–6) — 2026-09-09
 
-Working tree only. **No hosted migration, function deploy, Notion subscription, cron, Google watch, production bootstrap or Pages push.**
+Hosted on live `diurna`: inbound migrations, webhook functions, inbound worker, maintenance secret, Notion webhook subscription, minute cron, and production Notion/Google inbound activation. Operator runbook: [external-bidirectional-sync](external-bidirectional-sync.md).
 
-Locally implemented: thin Notion/Google webhooks, inbound worker, `apply_external_change`, Google watch persist-before-watch and renewal overlap, Google/Notion bootstrap (mapped compare, no silent overwrite, no baseline revision/signal bump), bounded Notion repair, 15-minute Google incremental repair serialized with webhooks, connection `inbound_status` (`disabled` / `bootstrapping` / `active` / `degraded` / `error`), disconnect that ignores inbound, Flutter **外部连接** observability (no resolver, no tokens).
+Implemented: thin Notion/Google webhooks, inbound worker, `apply_external_change`, Google watch persist-before-watch and renewal overlap, Google/Notion bootstrap (mapped compare, no silent overwrite, no baseline revision/signal bump), bounded Notion repair, 15-minute Google incremental repair serialized with webhooks, connection `inbound_status` (`disabled` / `bootstrapping` / `active` / `degraded` / `error`), disconnect that ignores inbound, Flutter **外部连接** observability and explicit conflict resolver (no tokens).
 
 Isolated SQL including Phase 4 and Deno `_shared` tests passed on the loopback cluster. Flutter model/widget tests cover inbound labels, Google degraded (repair still works), conflict counts and hidden token-like errors.
 
-Still not certified: hosted Realtime, iOS, live Google `events.watch`, live Notion webhook signature, production bootstrap. Operator runbook: [external-bidirectional-sync](external-bidirectional-sync.md).
+Still not certified: hosted Realtime timing, iOS device behavior, and iOS OAuth. Live Google watch and Notion webhook delivery are in production but are not a substitute for those platform checks.
 
 Once hosted inbound migrations are applied they are immutable; later schema changes must be new additive files.
 
@@ -45,7 +53,7 @@ Still not certified:
 - iOS build and iOS OAuth/sync were not run (Windows host).
 - Hosted Realtime timing was not re-measured.
 - CLI/MCP have no provider OAuth commands (intentional).
-- No cron, hosted bidirectional inbound or remote hard-delete (inbound remains repo-only; see the 2026-09-09 section).
+- No remote hard-delete from inbound (intentional). Bidirectional inbound and cron are hosted; see the 2026-09-09 inbound and 2026-09-10 hotfix sections.
 
 See [external-integrations](external-integrations.md) and [external-bidirectional-sync](external-bidirectional-sync.md).
 

@@ -34,11 +34,11 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 5. `20260909160000_inbound_work_heartbeat.sql`
 6. `20260909170000_inbound_activation_gate.sql`
 7. `20260909180000_fix_inbound_date_baseline.sql`
+8. `20260909190000_external_conflict_resolution.sql`
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- `20260909120000`–`20260909170000` are **applied and immutable**
-- `20260909180000_fix_inbound_date_baseline.sql` is **review-only and not hosted yet**
+- `20260909120000`–`20260909190000` are **applied and immutable**
 
 Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After a migration is applied hosted, that file is immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 
@@ -48,7 +48,7 @@ Keep metadata/tombstones/receipts during rollback. Prefer a corrected client rel
 
 ## Verification
 
-`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`, `integrations_review_fixes.sql`, `integrations_inbound_activation.sql`) on the same isolated database.
+`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`, `integrations_review_fixes.sql`, `integrations_inbound_activation.sql`, `integrations_inbound_date_baseline.sql`, `integrations_conflict_resolution.sql`) on the same isolated database.
 
 Use `scripts/test-sync.ps1` only with the explicitly named loopback test database. The repository's local test cluster, when used, lives under ignored `.diurna/test-postgres`; it is not the user's production database.
 

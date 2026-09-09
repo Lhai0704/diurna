@@ -1,6 +1,6 @@
 # External bidirectional sync (Notion / Google Calendar inbound)
 
-Repo-only until the hosted rollout in this document is explicitly approved. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. They use `integrations.apply_external_change` (private schema, `db()` Postgres).
+Inbound and explicit conflict resolution are hosted on live project `diurna`. Further hosted changes still need explicit approval. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. They use `integrations.apply_external_change` (private schema, `db()` Postgres).
 
 Outbound one-way export is still Flutter-initiated. See [external-integrations](external-integrations.md).
 
@@ -65,6 +65,8 @@ One conflicted link does not disable the connection.
 ## Notion
 
 - Same paragraph-only lossless import as normal inbound. Unsupported body freezes the link (`unsupported_content`).
+- Memo/Diary bodies use one helper (`supabase/functions/_shared/notion_text.ts`) for import and export: CRLF and lone CR become LF, runs of newlines delimit paragraphs (max 100), a trailing newline keeps a trailing empty paragraph, and spaces inside a paragraph are not trimmed. After that normalization, matching local and Notion paragraph sequences are equal; inbound then preserves the exact local content bytes so no revision/generation bump occurs. Export never sends stray CR in paragraph rich text.
+- Keep Diurna post-write verify uses that same mapped compare. If live Notion is already equal, skip the provider write.
 - Bootstrap uses that same compare. Never treat the Notion `Revision` property as authoritative.
 - Repair is **not** a Calendar-style cursor. Bounded `data_sources.query` with `last_edited_time on_or_after last_inbound_at - 5 minutes`, max 3 pages per data source, then the same `notion_page` work as webhooks. Cadence 15 minutes.
 
@@ -87,6 +89,8 @@ Open conflicts open **查看冲突**. Each row shows provider, module, reason, o
 
 `conflict.local_revision` is historical. Summaries expose the **current** business-row revision as the value the UI must confirm. A resolve request with an older expected revision returns `STALE_CONFLICT` and leaves the conflict open; refresh is not an auto-resolve. After refresh the user chooses again at the current revision. Keep Diurna holds the selected snapshot in one transaction from that freshness check through the provider write and finish. Echo prevention is the same as inbound: `last_synced_revision` equals local revision so outbound export skips.
 
+Functions non-2xx bodies throw `FunctionException` in the Flutter client. Conflict resolve extracts `error.code` from that JSON and maps it through the existing safe labels (`PROVIDER_VERIFY_FAILED`, `PROVIDER_WRITE_FAILED`, `PROVIDER_VERSION_CONFLICT`, `STALE_CONFLICT`, `REAUTH_REQUIRED`, …). The UI must not show the raw exception string. Unrecognized details fall back to a generic retry message.
+
 ## Isolated tests
 
 `scripts/test-sync.ps1` on a loopback database named `*_test`:
@@ -105,16 +109,15 @@ Open conflicts open **查看冲突**. Each row shows provider, module, reason, o
 
 Deno: `npx --yes deno@2.1.4 test supabase/functions/_shared --allow-env`.
 
-## Hosted rollout (do not start until explicitly approved)
+## Hosted rollout
 
-Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test scripts at it.
+Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test scripts at it. Inbound, webhooks, cron and explicit conflict resolution are already hosted. Do not repeat the steps below unless a new additive change is explicitly approved.
 
 ### Migration freeze
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- **Applied and immutable:** `20260909120000`–`20260909180000`
-- **Review-only, not hosted yet:** `20260909190000_external_conflict_resolution.sql`
+- **Applied and immutable:** `20260909120000`–`20260909190000` (including `20260909190000_external_conflict_resolution.sql`)
 
 Never edit an already-applied migration. Create a new additive file instead.
 
@@ -179,7 +182,8 @@ Apply **in this order**, additive, on a backup-verified project:
 4. `20260909150000_inbound_review_fixes.sql`
 5. `20260909160000_inbound_work_heartbeat.sql`
 6. `20260909170000_inbound_activation_gate.sql`
-7. `20260909180000_fix_inbound_date_baseline.sql` (not hosted yet)
+7. `20260909180000_fix_inbound_date_baseline.sql`
+8. `20260909190000_external_conflict_resolution.sql`
 
 `20260908120000_add_external_integrations.sql` is already on the live project.
 
