@@ -14,6 +14,18 @@ Windows defaults to 复古; Web and iOS default to Web 风格. The choice is loc
 
 Still not certified: live visual QA on iOS, and Web theme switching on a phone-sized viewport.
 
+## External inbound (Phases 1–6) — 2026-09-09
+
+Working tree only. **No hosted migration, function deploy, Notion subscription, cron, Google watch, production bootstrap or Pages push.**
+
+Locally implemented: thin Notion/Google webhooks, inbound worker, `apply_external_change`, Google watch persist-before-watch and renewal overlap, Google/Notion bootstrap (mapped compare, no silent overwrite, no baseline revision/signal bump), bounded Notion repair, 15-minute Google incremental repair serialized with webhooks, connection `inbound_status` (`disabled` / `bootstrapping` / `active` / `degraded` / `error`), disconnect that ignores inbound, Flutter **外部连接** observability (no resolver, no tokens).
+
+Isolated SQL including Phase 4 and Deno `_shared` tests passed on the loopback cluster. Flutter model/widget tests cover inbound labels, Google degraded (repair still works), conflict counts and hidden token-like errors.
+
+Still not certified: hosted Realtime, iOS, live Google `events.watch`, live Notion webhook signature, production bootstrap. Operator runbook: [external-bidirectional-sync](external-bidirectional-sync.md).
+
+Once hosted inbound migrations are applied they are immutable; later schema changes must be new additive files.
+
 ## External integrations — 2026-09-08
 
 Manual one-way Notion and Google Calendar export is in the working tree: Flutter **外部连接** UI, Edge Functions `integrations` and `integrations-oauth-callback`, additive SQL `20260908120000_add_external_integrations.sql`, and isolated SQL tests. Protocol v2 objects were not rewritten. Flutter does not read provider tokens.
@@ -27,9 +39,9 @@ Still not certified:
 - iOS build and iOS OAuth/sync were not run (Windows host).
 - Hosted Realtime timing was not re-measured.
 - CLI/MCP have no provider OAuth commands (intentional).
-- No cron, bidirectional merge or remote hard-delete.
+- No cron, hosted bidirectional inbound or remote hard-delete (inbound remains repo-only; see the 2026-09-09 section).
 
-See [external-integrations](external-integrations.md).
+See [external-integrations](external-integrations.md) and [external-bidirectional-sync](external-bidirectional-sync.md).
 
 ## Machine interface — 2026-09-05
 

@@ -1,7 +1,18 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { decryptTokenBundle, encryptTokenBundle } from "./crypto.ts";
+import {
+  decryptTokenBundle,
+  decryptUtf8,
+  encryptTokenBundle,
+  encryptUtf8,
+} from "./crypto.ts";
 import { googleEventId } from "./google_id.ts";
 import { shouldRefreshAccessToken } from "./google_auth.ts";
+
+Deno.test("utf8 secret round-trip", async () => {
+  const secret = "integration-token-key-for-tests";
+  const encrypted = await encryptUtf8("secret_from_notion", secret);
+  assertEquals(await decryptUtf8(encrypted, secret), "secret_from_notion");
+});
 
 Deno.test("token bundle round-trip", async () => {
   const secret = "integration-token-key-for-tests";

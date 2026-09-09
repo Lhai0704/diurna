@@ -141,6 +141,8 @@ class _ProviderCard extends ConsumerWidget {
               )
             else if (connection?.lastError != null)
               Text(connection!.lastError!),
+            if (connected && connection != null)
+              ..._inboundStatusLines(context, connection!),
             if (error != null)
               Text(
                 error!,
@@ -225,5 +227,52 @@ class _ProviderCard extends ConsumerWidget {
       'pending' => '待同步',
       _ => '尚未同步',
     };
+  }
+
+  List<Widget> _inboundStatusLines(
+    BuildContext context,
+    IntegrationConnection connection,
+  ) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall;
+    final statusColor = switch (connection.inboundStatus) {
+      'error' => theme.colorScheme.error,
+      'degraded' => theme.colorScheme.tertiary,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    final hint = inboundDegradedHint(
+      connection.provider,
+      connection.inboundStatus,
+    );
+    final errorCode = safeInboundCode(connection.inboundError);
+    final reasons = connection.conflictReasons
+        .map(inboundReasonLabel)
+        .toSet()
+        .toList();
+    return [
+      const SizedBox(height: 8),
+      Text(
+        inboundStatusLabel(connection.inboundStatus),
+        style: theme.textTheme.bodyMedium?.copyWith(color: statusColor),
+      ),
+      if (hint != null) Text(hint, style: muted),
+      if (connection.lastInboundAt != null)
+        Text(
+          '上次入站：${DateFormat('yyyy-MM-dd HH:mm').format(connection.lastInboundAt!.toLocal())}',
+          style: muted,
+        ),
+      if (connection.lastInboundResult != null)
+        Text(
+          '入站结果：${inboundResultLabel(connection.lastInboundResult)}',
+          style: muted,
+        ),
+      if (errorCode != null && connection.inboundError != 'REAUTH_REQUIRED')
+        Text('入站错误：$errorCode', style: muted?.copyWith(color: statusColor)),
+      if (connection.openConflictCount > 0)
+        Text('未处理冲突：${connection.openConflictCount}', style: muted),
+      if (connection.remoteDeletedCount > 0)
+        Text('远端已删除：${connection.remoteDeletedCount}', style: muted),
+      for (final reason in reasons) Text(reason, style: muted),
+    ];
   }
 }

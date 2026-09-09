@@ -10,7 +10,7 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $arguments = @('-h','127.0.0.1','-p',"$Port",'-U',$User,'-d',$Database,'-v','ON_ERROR_STOP=1')
 $actual = & $Psql @arguments -At -c 'select current_database()'
 if ($LASTEXITCODE -ne 0 -or $actual.Trim() -ne $Database) { throw 'Test database identity check failed.' }
-foreach ($relative in @('supabase/tests/bootstrap.sql','supabase/schema.sql','supabase/tests/protocol_v2.sql','supabase/tests/integrations.sql')) {
+foreach ($relative in @('supabase/tests/bootstrap.sql','supabase/schema.sql','supabase/tests/protocol_v2.sql','supabase/tests/integrations.sql','supabase/tests/integrations_inbound.sql','supabase/tests/integrations_google_inbound.sql','supabase/tests/integrations_phase4.sql','supabase/tests/integrations_review_fixes.sql','supabase/tests/integrations_inbound_activation.sql')) {
   & $Psql @arguments -f (Join-Path $repo $relative)
   if ($LASTEXITCODE -ne 0) { throw "Failed: $relative" }
 }

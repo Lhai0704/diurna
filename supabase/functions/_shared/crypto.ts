@@ -9,7 +9,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+function base64ToBytes(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -18,8 +18,8 @@ function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function asIv(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(bytes);
+function asIv(bytes: Uint8Array): BufferSource {
+  return bytes;
 }
 
 async function importKey(secret: string): Promise<CryptoKey> {
@@ -44,17 +44,36 @@ export async function encryptTokenBundle(
   bundle: TokenBundle,
   secret: string,
 ): Promise<EncryptedBundle> {
+  return encryptUtf8(JSON.stringify(bundle), secret);
+}
+
+export async function encryptUtf8(
+  plaintext: string,
+  secret: string,
+): Promise<EncryptedBundle> {
   const key = await importKey(secret);
   const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = encoder.encode(JSON.stringify(bundle));
   const ciphertext = new Uint8Array(
     await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: asIv(nonce) },
       key,
-      plaintext,
+      encoder.encode(plaintext),
     ),
   );
   return { cipher: bytesToBase64(ciphertext), nonce };
+}
+
+export async function decryptUtf8(
+  encrypted: EncryptedBundle,
+  secret: string,
+): Promise<string> {
+  const key = await importKey(secret);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: asIv(encrypted.nonce) },
+    key,
+    asIv(base64ToBytes(encrypted.cipher)),
+  );
+  return decoder.decode(plaintext);
 }
 
 export async function decryptTokenBundle(

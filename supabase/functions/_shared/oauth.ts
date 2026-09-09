@@ -117,6 +117,12 @@ async function exchangeNotion(code: string, userId: string): Promise<void> {
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token ?? payload.access_token,
     expiresAt: null,
+    containerPatch: {
+      ...(typeof payload.bot_id === "string" ? { bot_id: payload.bot_id } : {}),
+      ...(typeof payload.workspace_id === "string"
+        ? { workspace_id: payload.workspace_id }
+        : {}),
+    },
   });
 }
 
@@ -168,6 +174,7 @@ async function persistConnection(args: {
   accessToken: string;
   refreshToken: string;
   expiresAt: Date | null;
+  containerPatch?: Record<string, unknown>;
 }): Promise<void> {
   const { createClient } = await import("npm:@supabase/supabase-js@2");
   const admin = createClient(
@@ -177,13 +184,17 @@ async function persistConnection(args: {
   );
   const existing = await admin
     .from("integration_connections")
-    .select("id")
+    .select("id, container")
     .eq("user_id", args.userId)
     .eq("provider", args.provider)
     .in("status", ["pending", "connected", "error", "disconnected"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const previousContainer =
+    existing.data?.container && typeof existing.data.container === "object"
+      ? existing.data.container as Record<string, unknown>
+      : {};
   const row = {
     user_id: args.userId,
     provider: args.provider,
@@ -195,6 +206,7 @@ async function persistConnection(args: {
     last_sync_status: "never",
     last_seen_generation: null,
     page_cursor: {},
+    container: { ...previousContainer, ...(args.containerPatch ?? {}) },
     updated_at: new Date().toISOString(),
   };
   let connectionId = existing.data?.id as string | undefined;
