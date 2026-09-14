@@ -94,8 +94,8 @@ CLI and MCP do not connect or export to Notion/Google. Those stay on the Flutter
 
 The repository now supports Google single-day all-day remote creation in the managed Diurna calendar and Notion Inbox/Memo/Diary page creation in the three managed data sources. Memo/Diary bodies must be losslessly representable as plain paragraphs; unsupported or incomplete pages defer safely and can retry after editing. Valid owned Diurna metadata restores missing links; otherwise an atomic transaction allocates a new local UUID and link. Remote deletes never hard-delete the local entity or create protocol tombstones.
 
-This feature requires the new additive migration `20260910000000_external_remote_create.sql`, updated functions, and Notion `page.created` subscription coverage. **Not yet deployed by this change.** No new secret is required. See [remote-create rollout](external-bidirectional-sync.md#remote-create-rollout).
+This feature is hosted: additive migration `20260910000000_external_remote_create.sql`, `integrations` / `integrations-inbound-worker` / `integrations-notion-webhook`, and Notion `page.created` handling in the webhook function. No new secret is required. See [remote-create rollout](external-bidirectional-sync.md#remote-create-rollout).
 
 ## Out of scope for this version
 
-Remote hard-delete/tombstone from the provider, Flutter polling of Notion/Google, unsupported timed/recurring imports, and iOS device checks. Automated tests do not prove hosted OAuth, Realtime, Google watches or Notion subscriptions. Export while the app is closed waits until a Flutter session sees the newer generation. Remote-create hosted rollout still requires explicit approval.
+Remote hard-delete/tombstone from the provider, Flutter polling of Notion/Google, unsupported timed/recurring imports, and iOS device checks. Automated tests do not prove hosted OAuth, Realtime, Google watches or Notion subscriptions. Export while the app is closed waits until a Flutter session sees the newer generation.

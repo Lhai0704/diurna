@@ -35,12 +35,11 @@ Inbound is also additive and does not rewrite v2 objects. Linked updates and rem
 6. `20260909170000_inbound_activation_gate.sql`
 7. `20260909180000_fix_inbound_date_baseline.sql`
 8. `20260909190000_external_conflict_resolution.sql`
-9. `20260910000000_external_remote_create.sql` (repository implementation; not yet hosted)
+9. `20260910000000_external_remote_create.sql`
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- `20260909120000`–`20260909190000` are **applied and immutable**
-- `20260910000000_external_remote_create.sql` is in the repository and **not yet applied hosted**
+- `20260909120000`–`20260910000000` are **applied and immutable**
 
 Linked inbound updates go through `integrations.apply_external_change`; remote create/recovery uses `integrations.reconcile_external_object`. Neither path uses `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After a migration is applied hosted, that file is immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 

@@ -1,6 +1,6 @@
 # External bidirectional sync (Notion / Google Calendar inbound)
 
-Inbound and explicit conflict resolution are hosted on live project `diurna`. Further hosted changes still need explicit approval. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. Linked updates use `integrations.apply_external_change`; remote create/recovery uses `integrations.reconcile_external_object` (private schema, `db()` Postgres). The remote-create feature below is repository-side only until its new migration and functions are deployed.
+Inbound, explicit conflict resolution, and remote create/recovery are hosted on live project `diurna`. Further hosted changes still need explicit approval. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. Linked updates use `integrations.apply_external_change`; remote create/recovery uses `integrations.reconcile_external_object` (private schema, `db()` Postgres).
 
 Outbound one-way export is still Flutter-initiated. See [external-integrations](external-integrations.md).
 
@@ -72,7 +72,7 @@ One conflicted link does not disable the connection.
 - Repair is **not** a Calendar-style cursor. Bounded `data_sources.query` with `last_edited_time on_or_after last_inbound_at - 5 minutes`, max 3 pages per data source, then the same `notion_page` work as webhooks. Cadence 15 minutes.
 
 
-## Remote create / identity recovery (repository implementation, not yet deployed)
+## Remote create / identity recovery
 
 Migration: `20260910000000_external_remote_create.sql`. Earlier applied migrations remain immutable. Existing unique constraints already enforce both remote-object and local-entity identity per connection.
 
@@ -87,14 +87,16 @@ Observability is in private `integrations.remote_object_status` (external ID, re
 
 ### Remote-create rollout
 
-Repository tests do not establish hosted deployment or live delivery. After explicit hosted approval:
+Hosted on live `diurna` (2026-09-14): migration `20260910000000`, `integrations` v7 (`verify_jwt=true`), `integrations-inbound-worker` v5 and `integrations-notion-webhook` v3 (`verify_jwt=false`). No new secret or OAuth scope. Existing enabled connections receive historical discovery automatically. This does not activate disabled connections.
+
+If repeating on another project after local verification:
 
 1. Apply **only** the new additive migration after `20260909190000`; do not re-run old destructive migrations or upload `schema.sql` to production.
-2. Deploy `integrations` (verify_jwt=true), `integrations-inbound-worker` and `integrations-notion-webhook` (verify_jwt=false). No new secret or OAuth scope is required.
-3. Ensure the existing Notion webhook subscription includes [`page.created`](https://developers.notion.com/reference/webhooks-events-delivery); keep existing update/delete events. No Google calendar/watch configuration change is required.
+2. Deploy `integrations` (verify_jwt=true), `integrations-inbound-worker` and `integrations-notion-webhook` (verify_jwt=false).
+3. Ensure the existing Notion webhook subscription includes [`page.created`](https://developers.notion.com/reference/webhooks-events-delivery); keep existing update/delete events. No Google calendar/watch configuration change is required. Repair and historical discovery still import unlinked pages if `page.created` is missing from the subscription.
 4. Smoke-test a disposable connection: one remote object per supported type, repeated delivery, next local PATCH, missing-link recovery, unsupported→supported retry and both conflict-resolution actions. Verify Windows/Web sync visibility; device/Realtime timing remains a live check.
 
-Existing enabled connections receive historical discovery automatically. This does not activate disabled connections. To pause rollout, use existing inbound deactivation (preserve local entities and links); do not drop imported data or reverse the migration.
+To pause rollout, use existing inbound deactivation (preserve local entities and links); do not drop imported data or reverse the migration.
 
 ### Reproducible repository validation
 
@@ -154,14 +156,13 @@ Deno: `npx --yes deno test --allow-env --allow-net supabase/functions/_shared`. 
 
 ## Hosted rollout
 
-Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test scripts at it. Inbound, webhooks, cron and explicit conflict resolution are already hosted. Do not repeat the steps below unless a new additive change is explicitly approved.
+Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test scripts at it. Inbound, webhooks, cron, explicit conflict resolution and remote create are already hosted. Do not repeat the steps below unless a new additive change is explicitly approved.
 
 ### Migration freeze
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
-- **Applied and immutable:** `20260909120000`–`20260909190000` (including `20260909190000_external_conflict_resolution.sql`)
-- **Repository, not yet hosted:** `20260910000000_external_remote_create.sql`
+- **Applied and immutable:** `20260909120000`–`20260910000000` (including `20260910000000_external_remote_create.sql`)
 
 Never edit an already-applied migration. Create a new additive file instead.
 
@@ -228,8 +229,9 @@ Apply **in this order**, additive, on a backup-verified project:
 6. `20260909170000_inbound_activation_gate.sql`
 7. `20260909180000_fix_inbound_date_baseline.sql`
 8. `20260909190000_external_conflict_resolution.sql`
+9. `20260910000000_external_remote_create.sql`
 
-`20260908120000_add_external_integrations.sql` is already on the live project.
+`20260908120000_add_external_integrations.sql` is already on the live project. Remote create is hosted; do not re-apply these files.
 
 Keep the `integrations` schema off the Data API extra-schemas list.
 
