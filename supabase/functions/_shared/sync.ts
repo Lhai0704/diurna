@@ -8,6 +8,8 @@ import { freezeLinkConflict } from "./external_mutation.ts";
 import { decideOutbound } from "./outbound_skip.ts";
 import { notionHeaders, pushNotion } from "./notion_export.ts";
 
+import { withConnectionInboundLock } from "./inbound_work.ts";
+
 const WRITE_BUDGET = 80;
 
 export type ModuleCounts = {
@@ -45,13 +47,19 @@ export async function runSync(args: {
   provider: "notion" | "google";
   runId: string | null;
 }): Promise<Record<string, unknown>> {
-  let connection = await loadConnection(args.admin, args.userId, args.provider);
-  if (!connection) {
+  const loaded = await loadConnection(args.admin, args.userId, args.provider);
+  if (!loaded) {
     return { ok: false, status: "failed", error: { code: "NOT_CONNECTED" } };
   }
+  return await withConnectionInboundLock(String(loaded.id), () => runLockedSync(args, String(loaded.id)));
+}
+
+async function runLockedSync(args: Parameters<typeof runSync>[0], connectionId: string): Promise<Record<string, unknown>> {
+  let connection = await loadConnection(args.admin, args.userId, args.provider);
+  if (!connection || connection.id !== connectionId) return {ok:false,status:"failed",error:{code:"NOT_CONNECTED"}};
   const generation = await readGeneration(args.userClient, args.userId);
   const lease = await acquireConnectionLease({
-    connectionId: connection.id,
+    connectionId: String(connection.id),
     userId: args.userId,
     incomingRunId: args.runId,
     currentGeneration: generation,
@@ -68,7 +76,7 @@ export async function runSync(args: {
   }
   if (lease.shortCircuit) {
     await persistLeaseProgress({
-      connectionId: connection.id,
+      connectionId: String(connection.id),
       userId: args.userId,
       runId: lease.runId,
       pageCursor: {},
@@ -91,7 +99,7 @@ export async function runSync(args: {
     };
   }
 
-  const credential = await readCredential(connection.id);
+  const credential = await readCredential(String(connection.id));
   if (!credential) {
     return await failReauth(connection.id as string, args.userId, lease.runId);
   }
@@ -130,7 +138,7 @@ export async function runSync(args: {
     const counts = emptyCounts();
     const started = (cursor[module] as string | undefined) ?? "";
     const rows = await listRows(args.userClient, args.userId, module, started);
-    const links = await loadLinks(args.admin, connection.id, module, rows.map((r) => r.id));
+    const links = await loadLinks(args.admin, String(connection.id), module, rows.map((r) => r.id));
     for (const row of rows) {
       counts.scanned += 1;
       const link = links.get(row.id);
@@ -231,7 +239,7 @@ export async function runSync(args: {
       }
     }
     await persistLeaseProgress({
-      connectionId: connection.id,
+      connectionId: String(connection.id),
       userId: args.userId,
       runId: lease.runId,
       pageCursor: incomplete ? {} : {},
@@ -255,7 +263,7 @@ export async function runSync(args: {
   }
 
   await persistLeaseProgress({
-    connectionId: connection.id,
+    connectionId: String(connection.id),
     userId: args.userId,
     runId: lease.runId,
     pageCursor: cursor,

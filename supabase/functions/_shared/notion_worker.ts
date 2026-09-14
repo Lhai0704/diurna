@@ -12,6 +12,9 @@ import {
   type NotionPage,
 } from "./notion_import.ts";
 import { notionHeaders, omitLegacyRemoteTitle } from "./notion_export.ts";
+import { notionId } from "./remote_identity.ts";
+import { notionEntityType, resolveNotionSource, reconcileUnlinkedNotionPage, retryNotionMetadata, acknowledgeNotionCreateEcho, notionDiurnaId, loadNotionRecoveryEntity } from "./notion_remote_create.ts";
+import { recordRemoteReason } from "./remote_create.ts";
 
 export type NotionFetch = (
   input: string,
@@ -127,28 +130,27 @@ export async function processNotionPageWork(args: {
   pageId: string;
   eventType: string;
   fetchImpl?: NotionFetch;
+  bootstrap?: boolean;
 }): Promise<{ result: string; reason?: string }> {
   const fetchImpl = args.fetchImpl ?? fetch;
+  args = {...args,pageId:notionId(args.pageId)};
   const connection = await loadConnectionRow(args.connectionId);
-  if (!connection || connection.status !== "connected") {
+  if (!connection || connection.status !== "connected" || connection.provider !== "notion") {
     return { result: "ignored", reason: "disconnected" };
   }
   const inboundStatus = String(connection.inbound_status ?? "disabled");
   if (inboundStatus === "disabled") {
     return { result: "ignored", reason: "inbound_disabled" };
   }
-  if (inboundStatus === "bootstrapping") {
+  if (inboundStatus === "bootstrapping" && !args.bootstrap) {
     return { result: "deferred" };
   }
   if (inboundStatus === "error") {
     return { result: "ignored", reason: "error" };
   }
   const link = await loadLink(args.connectionId, args.pageId);
-  if (!link) {
-    return { result: "ignored", reason: "no_link" };
-  }
   if (
-    link.entity_type !== "inbox_items" &&
+    link && link.entity_type !== "inbox_items" &&
     link.entity_type !== "memos" &&
     link.entity_type !== "diary_entries"
   ) {
@@ -164,6 +166,7 @@ export async function processNotionPageWork(args: {
     { headers: notionHeaders(credential.bundle.access_token) },
   );
   if (pageResponse.status === 404) {
+    if (!link) return {result:"ignored",reason:"remote_deleted"};
     const applied = await applyExternalChange({
       connectionId: args.connectionId,
       entityType: link.entity_type,
@@ -180,6 +183,21 @@ export async function processNotionPageWork(args: {
     throw new Error(`notion_page_${pageResponse.status}`);
   }
   const page = await pageResponse.json() as NotionPage;
+  if (!link) {
+    if (page.archived || page.in_trash) return {result:"ignored",reason:"remote_deleted"};
+    const container = (connection.container ?? {}) as Record<string,unknown>;
+    const sourceId = await resolveNotionSource(page,container,credential.bundle.access_token,fetchImpl);
+    if (!sourceId) return {result:"ignored",reason:"unmanaged_parent"};
+    const entityType = notionEntityType(container,sourceId)!;
+    const blocks = await listBlockChildren(credential.bundle.access_token,args.pageId,fetchImpl);
+    const recoveryEntity = await loadNotionRecoveryEntity(String(connection.user_id),entityType,notionDiurnaId(page));
+    const result = await reconcileUnlinkedNotionPage({connectionId:args.connectionId,sourceId,entityType,
+      page:{...page,id:args.pageId},blocks,recoveryEntity});
+    await recordRemoteReason(args.connectionId,args.pageId,result.reason ?? null);
+    if (result.result === "existing") return await processNotionPageWork(args);
+    if (result.result === "created") await retryNotionMetadata(args.connectionId,args.pageId,credential.bundle.access_token,fetchImpl);
+    return result;
+  }
   if (page.archived === true || page.in_trash === true) {
     const applied = await applyExternalChange({
       connectionId: args.connectionId,
@@ -250,6 +268,11 @@ export async function processNotionPageWork(args: {
     return { result: frozen.result, reason: frozen.reason };
   }
 
+  if (await acknowledgeNotionCreateEcho(args.connectionId,args.pageId,imported.patch,imported.lastEditedTime)) {
+    await clearLinkOutboundHold(args.connectionId,args.pageId);
+    await retryNotionMetadata(args.connectionId,args.pageId,credential.bundle.access_token,fetchImpl);
+    return {result:"duplicate",reason:"remote_create_echo"};
+  }
   const patch = omitLegacyRemoteTitle({
     entityType: link.entity_type,
     localTitle: entity.title,
@@ -267,5 +290,6 @@ export async function processNotionPageWork(args: {
     providerUpdatedAt: imported.lastEditedTime,
   });
   await clearLinkOutboundHold(args.connectionId, args.pageId);
+  await retryNotionMetadata(args.connectionId,args.pageId,credential.bundle.access_token,fetchImpl);
   return { result: applied.result, reason: applied.reason };
 }

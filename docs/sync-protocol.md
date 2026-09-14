@@ -25,7 +25,7 @@ There is no safe guarantee of conflict protection while old clients are still al
 
 `20260908120000_add_external_integrations.sql` is additive (connection metadata, private `integrations` schema). It does not alter v2 RPCs, revisions or signals. External Notion/Google export is not part of the Drift pending queue; see [external-integrations](external-integrations.md).
 
-Inbound (existing-item reverse UPDATE only) is also additive and does not rewrite v2 objects:
+Inbound is also additive and does not rewrite v2 objects. Linked updates and remote create/recovery stay in the private `integrations` schema:
 
 1. `20260909120000_add_external_inbound_sync.sql`
 2. `20260909130000_accept_inbound_event.sql`
@@ -35,12 +35,14 @@ Inbound (existing-item reverse UPDATE only) is also additive and does not rewrit
 6. `20260909170000_inbound_activation_gate.sql`
 7. `20260909180000_fix_inbound_date_baseline.sql`
 8. `20260909190000_external_conflict_resolution.sql`
+9. `20260910000000_external_remote_create.sql` (repository implementation; not yet hosted)
 
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
 - `20260909120000`–`20260909190000` are **applied and immutable**
+- `20260910000000_external_remote_create.sql` is in the repository and **not yet applied hosted**
 
-Inbound applies go through `integrations.apply_external_change`, never `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After a migration is applied hosted, that file is immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
+Linked inbound updates go through `integrations.apply_external_change`; remote create/recovery uses `integrations.reconcile_external_object`. Neither path uses `diurna_sync_*_v2` or PostgREST business-table updates. Baseline-equal bootstrap must not bump `revision` or `diurna_sync_signals`. `inbound_status=disabled` stays off until explicit `activate_inbound`; cron must not bootstrap production connections. After a migration is applied hosted, that file is immutable; further changes need a new additive migration. Operator order and rollback: [external-bidirectional-sync](external-bidirectional-sync.md).
 
 Drift v4→v5 adds queue generation/group fields and sync metadata. Pending v4 operations with unknown baseline use expected revision -1 and become retained conflicts rather than silently taking the latest remote version. Legacy v1/v2 tasks are mapped to Inbox without deleting the original `local_tasks` table. Old calendar date-range rows and queue payloads are retained in `legacy_calendar_events` / `legacy_pending_sync_operations`; extra old fields are also included in the migrated note. Unsupported retired tasks operations are retained as legacy conflicts.
 
@@ -48,7 +50,7 @@ Keep metadata/tombstones/receipts during rollback. Prefer a corrected client rel
 
 ## Verification
 
-`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`, `integrations_review_fixes.sql`, `integrations_inbound_activation.sql`, `integrations_inbound_date_baseline.sql`, `integrations_conflict_resolution.sql`) on the same isolated database.
+`supabase/tests/protocol_v2.sql` runs in a rolled-back transaction using two authenticated identities. It checks RLS, exact retry receipts, stale revision conflicts, protocol rejection, deletion protection and signal generation. `scripts/test-sync.ps1` then runs export and inbound suites (`integrations.sql`, `integrations_inbound.sql`, `integrations_google_inbound.sql`, `integrations_phase4.sql`, `integrations_review_fixes.sql`, `integrations_inbound_activation.sql`, `integrations_inbound_date_baseline.sql`, `integrations_conflict_resolution.sql`, `integrations_remote_create.sql`) on the same isolated database.
 
 Use `scripts/test-sync.ps1` only with the explicitly named loopback test database. The repository's local test cluster, when used, lives under ignored `.diurna/test-postgres`; it is not the user's production database.
 

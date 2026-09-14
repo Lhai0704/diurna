@@ -2,7 +2,9 @@ import { readCredential } from "./credentials.ts";
 import { db } from "./db.ts";
 import { loadConnectionRow, touchInboundOk } from "./connection_status.ts";
 import { enqueueInboundWork } from "./inbound_work.ts";
-import { notionHeaders } from "./notion_export.ts";
+import { queryDataSource, discoverNotionPages } from "./notion_discovery.ts";
+import { notionId } from "./remote_identity.ts";
+export { MAX_PAGES_PER_SOURCE } from "./notion_discovery.ts";
 
 type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -12,7 +14,7 @@ type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
 // source, then enqueue the same notion_page work as webhooks. Cadence is the
 // worker's 15-minute repair interval for active/degraded connections.
 const OVERLAP_MS = 5 * 60 * 1000;
-export const MAX_PAGES_PER_SOURCE = 3;
+
 
 export type RepairSourceState = {
   sinceIso: string;
@@ -41,54 +43,6 @@ export function shouldAdvanceRepairWatermark(state: RepairState): boolean {
   return Object.keys(state).length === 0;
 }
 
-async function queryDataSource(args: {
-  token: string;
-  dataSourceId: string;
-  sinceIso: string;
-  startCursor?: string | null;
-  fetchImpl: NotionFetch;
-}): Promise<{ ids: string[]; hasMore: boolean; nextCursor: string | null }> {
-  const ids: string[] = [];
-  let cursor: string | null = args.startCursor ?? null;
-  let hasMore = false;
-  let nextCursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES_PER_SOURCE; page++) {
-    const response = await args.fetchImpl(
-      `https://api.notion.com/v1/data_sources/${args.dataSourceId}/query`,
-      {
-        method: "POST",
-        headers: notionHeaders(args.token),
-        body: JSON.stringify({
-          page_size: 100,
-          start_cursor: cursor ?? undefined,
-          filter: {
-            timestamp: "last_edited_time",
-            last_edited_time: { on_or_after: args.sinceIso },
-          },
-        }),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`notion_query_${response.status}`);
-    }
-    const payload = await response.json() as {
-      results?: Array<{ id?: string }>;
-      has_more?: boolean;
-      next_cursor?: string | null;
-    };
-    for (const row of payload.results ?? []) {
-      if (typeof row.id === "string") ids.push(row.id);
-    }
-    hasMore = Boolean(payload.has_more && payload.next_cursor);
-    nextCursor = payload.next_cursor ?? null;
-    if (!hasMore) {
-      break;
-    }
-    cursor = payload.next_cursor ?? null;
-  }
-  return { ids, hasMore, nextCursor };
-}
-
 export async function repairNotionConnection(args: {
   connectionId: string;
   now?: Date;
@@ -110,7 +64,10 @@ export async function repairNotionConnection(args: {
     throw new Error("REAUTH_REQUIRED");
   }
   const container = (connection.container ?? {}) as Record<string, string>;
-  const previousState = (connection.inbound_repair_state ?? {}) as RepairState;
+  const complete = await discoverNotionPages({connectionId:args.connectionId,container,token:credential.bundle.access_token,fetchImpl:args.fetchImpl ?? fetch});
+  if (!complete) return {result:"deferred",enqueued:0};
+  const latest = await loadConnectionRow(args.connectionId);
+  const previousState = (latest?.inbound_repair_state ?? {}) as RepairState;
   const lastInbound = connection.last_inbound_at
     ? Date.parse(String(connection.last_inbound_at))
     : NaN;
@@ -121,7 +78,8 @@ export async function repairNotionConnection(args: {
   const fetchImpl = args.fetchImpl ?? fetch;
   const sources = ["inbox_ds", "memo_ds", "diary_ds"]
     .map((key) => container[key])
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+    .map(notionId);
   const pageIds = new Set<string>();
   let nextState: RepairState = { ...previousState };
   for (const dataSourceId of sources) {
@@ -143,21 +101,19 @@ export async function repairNotionConnection(args: {
       nextCursor: listed.nextCursor,
     });
   }
-  const linked = pageIds.size === 0 ? [] : await db()`
-    select external_id
-      from public.external_sync_links
-     where connection_id = ${args.connectionId}::uuid
-       and external_id = any(${[...pageIds]}::text[])
-  `;
+  const pending = await db()`select s.external_id from integrations.remote_object_status s
+    join public.external_sync_links l using(connection_id,external_id)
+    where s.connection_id=${args.connectionId}::uuid and s.metadata_pending and l.inbound_state='ready'`;
+  for (const row of pending) pageIds.add(String(row.external_id));
   let enqueued = 0;
-  for (const row of linked) {
+  for (const pageId of pageIds) {
     await enqueueInboundWork({
       connectionId: args.connectionId,
       provider: "notion",
       workType: "notion_page",
-      dedupKey: String(row.external_id),
+      dedupKey: pageId,
       payload: {
-        page_id: row.external_id,
+        page_id: pageId,
         event_type: "page.properties_updated",
         source: "repair",
       },

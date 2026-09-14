@@ -5,6 +5,7 @@ import {
 } from "./webhook_auth.ts";
 
 export const NOTION_INBOUND_EVENTS = new Set([
+  "page.created",
   "page.properties_updated",
   "page.content_updated",
   "page.deleted",

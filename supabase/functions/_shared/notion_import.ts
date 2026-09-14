@@ -33,6 +33,7 @@ export type NotionBlock = {
 };
 
 export type NotionPage = {
+  parent?: { type?: string; data_source_id?: string; database_id?: string };
   id?: string;
   archived?: boolean;
   in_trash?: boolean;
@@ -124,7 +125,8 @@ export function notionBodyIsLossless(blocks: NotionBlock[]): boolean {
   if (blocks.length > MAX_PARAGRAPHS) {
     return false;
   }
-  return blocks.every((block) => isPlainParagraphBlock(block));
+  return blocks.every((block) => isPlainParagraphBlock(block) &&
+    normalizeNotionLineEndings(flattenRichText(block.paragraph?.rich_text ?? [])).length <= MAX_TEXT);
 }
 
 export function flattenLosslessParagraphs(blocks: NotionBlock[]): string {

@@ -18,6 +18,7 @@ import {
   patchNotionPageTitle,
 } from "./notion_export.ts";
 import { patchMatchesRow } from "./mapped.ts";
+import { beginNotionBootstrapDiscovery, discoverNotionPages, finishNotionBootstrapDiscovery } from "./notion_discovery.ts";
 
 type NotionFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -160,6 +161,7 @@ export async function bootstrapNotionConnection(args: {
       throw new Error("REAUTH_REQUIRED");
     }
     const fetchImpl = args.fetchImpl ?? fetch;
+    await beginNotionBootstrapDiscovery(args.connectionId);
     const links = await db()`
       select entity_type, entity_id::text as entity_id, external_id
         from public.external_sync_links
@@ -259,6 +261,9 @@ export async function bootstrapNotionConnection(args: {
         ready += 1;
       }
     }
-  await setInboundStatus(args.connectionId, "bootstrap_ok_watch_ok", { result: "bootstrap" });
+  const discovered = await discoverNotionPages({connectionId:args.connectionId,
+    container:(latest.container ?? {}) as Record<string,unknown>,token:credential.bundle.access_token,fetchImpl,bootstrap:true});
+  if (!discovered) return {result:"deferred",ready,conflicts};
+  await finishNotionBootstrapDiscovery(args.connectionId);
   return { result: "ok", ready, conflicts };
 }
