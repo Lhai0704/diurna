@@ -112,8 +112,10 @@ export async function enqueueDueRepairs(now = new Date()): Promise<number> {
   `;
   let n = 0;
   for (const row of rows) {
+    const discovery = await db()`select 1 from integrations.remote_discovery_state
+      where connection_id=${String(row.id)}::uuid and completed and source_id<>'__bootstrap__' limit 1`;
     if (
-      !shouldEnqueueRepair({
+      discovery.length > 0 && !shouldEnqueueRepair({
         now,
         lastInboundAt: row.last_inbound_at ? String(row.last_inbound_at) : null,
         inboundStatus: String(row.inbound_status),

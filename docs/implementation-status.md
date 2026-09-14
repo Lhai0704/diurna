@@ -2,6 +2,12 @@
 
 **Current hosted status (2026-09-10).** Live project `diurna` has one-way export, inbound webhooks/worker/cron, and explicit conflict resolution. Applied inbound/conflict migrations are `20260909120000`–`20260909190000` (immutable). Notion import/export share CRLF-safe paragraph semantics (`notion_text.ts`). Flutter maps Functions `error.code` to safe conflict labels. Windows and Web clients track `main`.
 
+## Remote create — repository implementation, hosted rollout pending
+
+New additive migration: `20260910000000_external_remote_create.sql`. No previously applied migration changed. Managed Notion Inbox/Memo/Diary and Google single-day all-day events can atomically create local entities and ready links, or recover owned missing links with bootstrap conflict semantics. Replay/concurrent create is unique; protocol revision/signal triggers and remote-delete semantics are preserved. Missing required fields and unsupported bodies defer without placeholders. Metadata writeback is durable and does not acknowledge intervening local edits. Historical discovery is bounded/resumable and shares worker reconciliation.
+
+Verified locally: Deno check passed for all shared modules and integration/webhook/worker entrypoints; 162 Deno tests with 12 real-DB/provider-mock steps passed (including two independent SQL sessions). The full isolated SQL suite passed on fresh schema; upgrading the `81482de` schema using only the new migration passed remote-create SQL tests and preserved a pre-existing revision-7 entity/link and its generation. Flutter analyze passed and all 59 Flutter tests passed. Rollout requirements are recorded in [external bidirectional sync](external-bidirectional-sync.md#remote-create-rollout). This change does not deploy Supabase, push main, or certify live Realtime/device behavior. Deno 2.9 typechecking also required narrow existing JSON/BufferSource/connection-ID type fixes; business behavior is unchanged by those fixes.
+
 ## Notion CRLF hotfix and conflict UX — 2026-09-10
 
 PR #4 merged to `main` (`5df7b4cd`). Shared paragraph helper normalizes CRLF / lone CR before import/export compare, so Keep Diurna verify treats LF Notion paragraphs as equal to a local CRLF body and preserves local bytes. Conflict resolve catches `FunctionException` and shows the mapped label, not the raw exception.

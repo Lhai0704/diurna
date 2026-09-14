@@ -19,7 +19,7 @@ function base64ToBytes(value: string): Uint8Array {
 }
 
 function asIv(bytes: Uint8Array): BufferSource {
-  return bytes;
+  return new Uint8Array(bytes).buffer;
 }
 
 async function importKey(secret: string): Promise<CryptoKey> {

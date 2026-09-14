@@ -12,7 +12,7 @@ import {
   type GoogleImportResult,
 } from "./google_import.ts";
 import { createGoogleWatch, persistWatchSyncToken } from "./google_watch.ts";
-import { listGoogleEvents } from "./google_worker.ts";
+import { listGoogleEvents, applyGoogleEvent } from "./google_worker.ts";
 import { loadConnectionRow, setInboundStatus } from "./connection_status.ts";
 import { patchMatchesRow } from "./mapped.ts";
 
@@ -211,7 +211,18 @@ export async function bootstrapGoogleConnection(args: {
         ready += 1;
       }
     }
-    // nextSyncToken is stored only after the compare pass finishes.
+    const linkedIds = new Set(links.map(link=>link.external_id));
+    for (const remote of listed.items) {
+      if (remote.id && !linkedIds.has(remote.id)) {
+        const result = await applyGoogleEvent(args.connectionId,remote,calendarId);
+        if (result.result === "conflict") conflicts++;
+        else if (result.result === "created" || result.result === "recovered") ready++;
+      }
+    }
+    await db()`insert into integrations.remote_discovery_state(connection_id,source_id,completed)
+      values(${args.connectionId}::uuid,${calendarId},true)
+      on conflict(connection_id,source_id) do update set completed=true`;
+    // nextSyncToken is stored only after the compare AND discovery passes finish.
     const still = await loadConnectionRow(args.connectionId);
     if (
       !still ||

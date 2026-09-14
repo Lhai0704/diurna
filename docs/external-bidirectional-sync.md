@@ -1,12 +1,12 @@
 # External bidirectional sync (Notion / Google Calendar inbound)
 
-Inbound and explicit conflict resolution are hosted on live project `diurna`. Further hosted changes still need explicit approval. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. They use `integrations.apply_external_change` (private schema, `db()` Postgres).
+Inbound and explicit conflict resolution are hosted on live project `diurna`. Further hosted changes still need explicit approval. Protocol v2 is unchanged. Inbound writes never go through PostgREST business-table updates or `diurna_sync_*_v2`. Linked updates use `integrations.apply_external_change`; remote create/recovery uses `integrations.reconcile_external_object` (private schema, `db()` Postgres). The remote-create feature below is repository-side only until its new migration and functions are deployed.
 
 Outbound one-way export is still Flutter-initiated. See [external-integrations](external-integrations.md).
 
 ## Scope
 
-- Reverse sync is **UPDATE of already-linked objects only**. No remote create into Diurna, no hard-delete/tombstone from remote.
+- Remote create and linked updates are supported only inside the connection's Diurna-managed Notion data sources / Google Diurna calendar. Remote deletes still never hard-delete a Diurna entity or write a protocol tombstone.
 - Flutter does not poll Notion or Google. Thin webhooks authenticate, dedup and enqueue; the inbound worker fetches and applies.
 - Conflicts are explicit (`external_sync_conflicts`). `inbound_state` is separate from outbound `sync_status`.
 - Users resolve an open conflict explicitly as **使用 Diurna** or **使用外部**. The resolver never silently picks a side. Flutter never reads snapshots, tokens, or `remote_version`.
@@ -19,7 +19,8 @@ provider webhook
   → enqueue inbound_work (rerun_requested coalescing)
   → integrations-inbound-worker
   → provider fetch
-  → integrations.apply_external_change | bootstrap_link_version | freeze_link_conflict
+  → integrations.reconcile_external_object (unlinked create/recover)
+  → integrations.apply_external_change | bootstrap_link_version | freeze_link_conflict (linked)
 ```
 
 Loop prevention: same-transaction `last_synced_revision` bump, mapped-field no-op, exporter skip of freeze/conflict/`remote_deleted` inbound states.
@@ -59,16 +60,57 @@ One conflicted link does not disable the connection.
 - Overlap of old and new channels is required. Duplicate pushes are coalesced.
 - Failed `channels.stop` does not fail the new watch; cleanup retries after 1 hour.
 - Renew when `expires_at < now() + 36 hours`. Do not renew every worker tick. Skip if a `creating` row exists.
-- Bootstrap: existing `container.calendar_id`, full `events.list`, mapped compare, equal → `inbound_state=ready` with **no revision/signal bump**, drift/timed/recurring/missing → explicit conflict. `nextSyncToken` only after the compare pass. Watch after baseline. `inbound_status=active` only after bootstrap result is complete (watch failure → `degraded`).
+- Bootstrap: existing `container.calendar_id`, full `events.list`, mapped compare, equal → `inbound_state=ready` with **no revision/signal bump**, drift/timed/recurring/missing → explicit conflict. Unlinked supported events use atomic create/recovery. `nextSyncToken` only after both passes. Watch after baseline. `inbound_status=active` only after bootstrap result is complete (watch failure → `degraded`).
 - Repair: incremental `events.list(syncToken)` on the same `google_incremental` work as webhooks (one sync-token stream per connection). Cadence 15 minutes when `active` or `degraded`.
 
 ## Notion
 
-- Same paragraph-only lossless import as normal inbound. Unsupported body freezes the link (`unsupported_content`).
+- Same paragraph-only lossless import as normal inbound. Unsupported body freezes an existing/recovered link (`unsupported_content`); a genuinely new page remains unimported with a retryable reason, without a placeholder entity.
 - Memo/Diary bodies use one helper (`supabase/functions/_shared/notion_text.ts`) for import and export: CRLF and lone CR become LF, runs of newlines delimit paragraphs (max 100), a trailing newline keeps a trailing empty paragraph, and spaces inside a paragraph are not trimmed. After that normalization, matching local and Notion paragraph sequences are equal; inbound then preserves the exact local content bytes so no revision/generation bump occurs. Export never sends stray CR in paragraph rich text.
 - Keep Diurna post-write verify uses that same mapped compare. If live Notion is already equal, skip the provider write.
 - Bootstrap uses that same compare. Never treat the Notion `Revision` property as authoritative.
 - Repair is **not** a Calendar-style cursor. Bounded `data_sources.query` with `last_edited_time on_or_after last_inbound_at - 5 minutes`, max 3 pages per data source, then the same `notion_page` work as webhooks. Cadence 15 minutes.
+
+
+## Remote create / identity recovery (repository implementation, not yet deployed)
+
+Migration: `20260910000000_external_remote_create.sql`. Earlier applied migrations remain immutable. Existing unique constraints already enforce both remote-object and local-entity identity per connection.
+
+- Google creates a `calendar_events` row only for a single-day, non-recurring all-day event in `container.calendar_id`, with a valid date range and nonempty title. Timed events, recurrence instances, multi-day/invalid ranges, cancelled/deleted unlinked objects are ignored. No other calendars are scanned. A valid owned `diurnaId` recovers the row's missing link; absent/invalid/nonexistent/foreign metadata creates a fresh UUID, never binds to a foreign row. A matching tombstone prevents resurrection. Google metadata is not patched just for import; later normal outbound PATCH writes exporter metadata.
+- Notion classifies by the fetched page's actual parent against `inbox_ds`, `memo_ds`, `diary_ds`. A legacy database parent must resolve unambiguously to one managed source. UUIDs are normalized. Unrelated workspace pages are ignored. Existing owned `Diurna ID` recovers links, preserving paragraph/CRLF comparison and explicit drift conflicts; a local entity already bound to another remote is not rebound.
+- New Inbox pages map properties only and require a nonempty title/content; a body cannot be discarded, so such pages defer. Memo requires a title; Diary requires title, body and Date. Missing optional properties use normal defaults. Unsupported bodies, overlong paragraphs, incomplete drafts and invalid dates remain unimported, with an operator-readable reason. Fixing the remote page permits a later webhook/repair to import it.
+- Create is one transaction: connection validation and row lock, existing user advisory lock, owned candidate/tombstone check, UUID allocation, entity insert, normal revision 1 / signal trigger, and a ready/synced link with matching revision and provider version. A retry returns the same mapping. Recovery alone does not advance entity revision/generation; drift uses bootstrap conflict semantics. Outbound export and inbound processing share the connection processing lock.
+- Notion ID/Revision-only writeback occurs after commit and is persisted as pending until successful. Provider failure does not undo the local create or lose its identity. No title/body is written. A private initial mapped fingerprint makes metadata-only echoes harmless even after a local edit; it never acknowledges that newer local revision.
+- Notion bootstrap and existing active/degraded connections discover historical pages using bounded queries (3 × 100 per source per batch), durable cursors and a catch-up watermark from scan start. Repair no longer filters out unlinked page IDs. Google performs a first full discovery on upgraded active/degraded connections; incremental replay and 410 full resync reuse the same reconciliation. Disabled inbound stays disabled.
+
+Observability is in private `integrations.remote_object_status` (external ID, reason, metadata pending and a mapped fingerprint, no body/token) and `integrations.remote_discovery_state` (source/cursor/completion). Incomplete/unsupported page reasons do not create fake conflicts. Metadata retries are also re-enqueued by repair after ordinary work retries are exhausted. Flutter does not read these tables.
+
+### Remote-create rollout
+
+Repository tests do not establish hosted deployment or live delivery. After explicit hosted approval:
+
+1. Apply **only** the new additive migration after `20260909190000`; do not re-run old destructive migrations or upload `schema.sql` to production.
+2. Deploy `integrations` (verify_jwt=true), `integrations-inbound-worker` and `integrations-notion-webhook` (verify_jwt=false). No new secret or OAuth scope is required.
+3. Ensure the existing Notion webhook subscription includes [`page.created`](https://developers.notion.com/reference/webhooks-events-delivery); keep existing update/delete events. No Google calendar/watch configuration change is required.
+4. Smoke-test a disposable connection: one remote object per supported type, repeated delivery, next local PATCH, missing-link recovery, unsupported→supported retry and both conflict-resolution actions. Verify Windows/Web sync visibility; device/Realtime timing remains a live check.
+
+Existing enabled connections receive historical discovery automatically. This does not activate disabled connections. To pause rollout, use existing inbound deactivation (preserve local entities and links); do not drop imported data or reverse the migration.
+
+### Reproducible repository validation
+
+Use a disposable loopback PostgreSQL cluster on port 55439. Never supply a hosted URL.
+
+```powershell
+.\scripts\test-sync.ps1 -Database diurna_remote_create_test -Port 55439
+npx --yes deno check supabase/functions/_shared/*.ts supabase/functions/integrations/index.ts supabase/functions/integrations-inbound-worker/index.ts supabase/functions/integrations-notion-webhook/index.ts supabase/functions/integrations-google-webhook/index.ts
+$env:DIURNA_TEST_DB_URL='postgresql://diurna_test@127.0.0.1:55439/diurna_remote_create_test'
+npx --yes deno test --allow-env --allow-net supabase/functions/_shared
+Remove-Item Env:DIURNA_TEST_DB_URL
+flutter analyze
+flutter test
+```
+
+Without `DIURNA_TEST_DB_URL`, the real-DB/provider-mock test is explicitly ignored; ordinary unit tests still run. The integration test rejects non-loopback/non-test databases and uses two independent PostgreSQL sessions for concurrency.
 
 ## Flutter status UI
 
@@ -80,7 +122,7 @@ One conflicted link does not disable the connection.
 - open conflict count, remote-deleted count
 - reason labels such as 不支持的 Notion 正文 / 不支持的定时事件
 
-Google `degraded` text says push is down and **timed repair still syncs linked events**; it does not say the connection is unusable. Token-like strings are not rendered.
+Google `degraded` text says push is down and **timed repair still reconciles supported events**; it does not say the connection is unusable. Token-like strings are not rendered.
 
 Open conflicts open **查看冲突**. Each row shows provider, module, reason, optional date, mapped field categories (not values), and two actions:
 
@@ -106,8 +148,9 @@ Functions non-2xx bodies throw `FunctionException` in the Flutter client. Confli
 9. `supabase/tests/integrations_inbound_activation.sql`
 10. `supabase/tests/integrations_inbound_date_baseline.sql`
 11. `supabase/tests/integrations_conflict_resolution.sql`
+12. `supabase/tests/integrations_remote_create.sql`
 
-Deno: `npx --yes deno@2.1.4 test supabase/functions/_shared --allow-env`.
+Deno: `npx --yes deno test --allow-env --allow-net supabase/functions/_shared`. Without `DIURNA_TEST_DB_URL`, the real-DB/provider-mock test is ignored.
 
 ## Hosted rollout
 
@@ -118,6 +161,7 @@ Live project remains `diurna` (`yuhnjgflxieiewzdodoa`). Do not point test script
 Hosted state on `diurna` (`yuhnjgflxieiewzdodoa`):
 
 - **Applied and immutable:** `20260909120000`–`20260909190000` (including `20260909190000_external_conflict_resolution.sql`)
+- **Repository, not yet hosted:** `20260910000000_external_remote_create.sql`
 
 Never edit an already-applied migration. Create a new additive file instead.
 

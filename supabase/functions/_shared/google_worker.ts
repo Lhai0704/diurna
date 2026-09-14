@@ -7,6 +7,8 @@ import {
 import { GoogleSession, ReauthRequiredError } from "./google_auth.ts";
 import { importGoogleEvent, type GoogleEvent } from "./google_import.ts";
 import { touchInboundOk } from "./connection_status.ts";
+import { reconcileUnlinkedGoogleEvent } from "./google_remote_create.ts";
+import { recordRemoteReason } from "./remote_create.ts";
 import {
   lookupActiveWatch,
   lookupSyncToken,
@@ -123,14 +125,22 @@ export async function listGoogleEvents(args: {
 export async function applyGoogleEvent(
   connectionId: string,
   event: GoogleEvent,
+  calendarId?: string,
 ): Promise<{ result: string; reason?: string }> {
   const eventId = typeof event.id === "string" ? event.id : "";
   if (!eventId) {
     return { result: "ignored", reason: "missing_id" };
   }
   const link = await loadLinkByExternalId(connectionId, eventId);
-  if (!link || link.entity_type !== "calendar_events") {
-    return { result: "ignored", reason: "no_link" };
+  if (!link) {
+    if (!calendarId) return {result:"ignored",reason:"missing_container"};
+    const result = await reconcileUnlinkedGoogleEvent({connectionId,calendarId,event});
+    if (result.reason) await recordRemoteReason(connectionId,eventId,result.reason);
+    if (result.result === "existing") return await applyGoogleEvent(connectionId,event,calendarId);
+    return result;
+  }
+  if (link.entity_type !== "calendar_events") {
+    return {result:"ignored",reason:"identity_mismatch"};
   }
   const imported = importGoogleEvent(event);
   if (imported.kind === "ignored") {
@@ -202,10 +212,10 @@ export async function processGoogleIncrementalWork(args: {
       return { result: "ignored", applied: 0, fullResync: false };
     }
     const watch = await lookupActiveWatch(args.connectionId);
-    const calendarId =
-      watch?.calendar_id ??
-      ((connection.container as { calendar_id?: string } | undefined)?.calendar_id) ??
-      null;
+    const calendarId = ((connection.container as {calendar_id?:string}|undefined)?.calendar_id) ?? null;
+    if (watch && watch.calendar_id !== calendarId) {
+      return {result:"ignored",applied:0,fullResync:false};
+    }
     if (!calendarId) {
       return { result: "ignored", applied: 0, fullResync: false };
     }
@@ -221,21 +231,26 @@ export async function processGoogleIncrementalWork(args: {
         credential.accessExpiresAt,
       );
     }
+    const discovery = await db()`select completed from integrations.remote_discovery_state
+      where connection_id=${args.connectionId}::uuid and source_id=${calendarId}`;
     const listed = await listGoogleEvents({
       fetch: (url) => session.fetch(url),
       calendarId,
-      syncToken: watch?.sync_token ?? (await lookupSyncToken(args.connectionId)),
+      syncToken: discovery[0]?.completed ? watch?.sync_token ?? (await lookupSyncToken(args.connectionId)) : null,
     });
     let applied = 0;
     for (const item of listed.items) {
-      const outcome = await applyGoogleEvent(args.connectionId, item);
-      if (outcome.result === "applied") {
+      const outcome = await applyGoogleEvent(args.connectionId, item,calendarId);
+      if (outcome.result === "applied" || outcome.result === "created") {
         applied += 1;
       }
     }
     if (listed.nextSyncToken) {
       await persistWatchSyncToken(args.connectionId, listed.nextSyncToken);
     }
+    await db()`insert into integrations.remote_discovery_state(connection_id,source_id,completed)
+      values(${args.connectionId}::uuid,${calendarId},true)
+      on conflict(connection_id,source_id) do update set completed=true`;
     await touchInboundOk(args.connectionId, listed.fullResync ? "full_resync" : "incremental");
     await db()`
       update public.integration_connections
